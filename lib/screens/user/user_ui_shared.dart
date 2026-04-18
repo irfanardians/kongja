@@ -171,7 +171,7 @@ class UserBottomNav extends StatelessWidget {
   Widget build(BuildContext context) {
     final items = [
       _BottomNavItem(icon: Icons.home_rounded, label: 'Home', route: '/home'),
-      _BottomNavItem(icon: Icons.message_rounded, label: 'Messages', route: '/messages'),
+      _BottomNavItem(icon: Icons.local_activity_rounded, label: 'Activity', route: '/messages'),
       _BottomNavItem(icon: Icons.favorite_rounded, label: 'Favorites', route: '/favorites'),
       _BottomNavItem(icon: Icons.person_rounded, label: 'Profile', route: '/user-profile'),
     ];

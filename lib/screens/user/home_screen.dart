@@ -13,6 +13,7 @@
 
 import 'package:flutter/material.dart';
 
+import '../../shared/demo_schedule_store.dart';
 import 'user_ui_shared.dart';
 
 class HomeScreen extends StatefulWidget {
@@ -34,6 +35,158 @@ class _HomeScreenState extends State<HomeScreen> {
   void dispose() {
     _cityController.dispose();
     super.dispose();
+  }
+
+  Future<void> _openScheduleNotifications(
+    List<DemoScheduleNotification> notifications,
+  ) async {
+    await showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (context) {
+        return DraggableScrollableSheet(
+          initialChildSize: 0.72,
+          minChildSize: 0.48,
+          maxChildSize: 0.9,
+          expand: false,
+          builder: (context, scrollController) {
+            return Container(
+              decoration: const BoxDecoration(
+                color: Color(0xFFFFFBF6),
+                borderRadius: BorderRadius.vertical(top: Radius.circular(30)),
+              ),
+              child: ListView(
+                controller: scrollController,
+                padding: const EdgeInsets.fromLTRB(20, 16, 20, 28),
+                children: [
+                  Center(
+                    child: Container(
+                      width: 54,
+                      height: 5,
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFD8CCC0),
+                        borderRadius: BorderRadius.circular(999),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 18),
+                  Row(
+                    children: [
+                      const Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              'Schedule Notifications',
+                              style: TextStyle(
+                                fontSize: 24,
+                                fontWeight: FontWeight.w800,
+                                color: Color(0xFF241B15),
+                              ),
+                            ),
+                            SizedBox(height: 4),
+                            Text(
+                              'Accepted and rejected schedule updates from talents.',
+                              style: TextStyle(color: Color(0xFF887F79)),
+                            ),
+                          ],
+                        ),
+                      ),
+                      IconButton(
+                        onPressed: () => Navigator.pop(context),
+                        icon: const Icon(Icons.close_rounded),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 16),
+                  if (notifications.isEmpty)
+                    Container(
+                      padding: const EdgeInsets.all(18),
+                      decoration: BoxDecoration(
+                        color: Colors.white,
+                        borderRadius: BorderRadius.circular(22),
+                      ),
+                      child: const Text(
+                        'Belum ada notifikasi schedule dari talent.',
+                        style: TextStyle(color: Color(0xFF6A625B)),
+                      ),
+                    )
+                  else
+                    ...notifications.map(
+                      (item) => Container(
+                        margin: const EdgeInsets.only(bottom: 12),
+                        padding: const EdgeInsets.all(16),
+                        decoration: BoxDecoration(
+                          color: Colors.white,
+                          borderRadius: BorderRadius.circular(20),
+                        ),
+                        child: Row(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Container(
+                              width: 42,
+                              height: 42,
+                              decoration: BoxDecoration(
+                                color: item.isPositive
+                                    ? const Color(0xFFE6F7EC)
+                                    : const Color(0xFFFFE8E8),
+                                borderRadius: BorderRadius.circular(14),
+                              ),
+                              child: Icon(
+                                item.isPositive
+                                    ? Icons.check_circle_rounded
+                                    : Icons.cancel_rounded,
+                                color: item.isPositive
+                                    ? const Color(0xFF218C4F)
+                                    : const Color(0xFFD54343),
+                              ),
+                            ),
+                            const SizedBox(width: 12),
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    item.title,
+                                    style: const TextStyle(
+                                      fontWeight: FontWeight.w700,
+                                      fontSize: 15,
+                                    ),
+                                  ),
+                                  const SizedBox(height: 4),
+                                  Text(
+                                    item.body,
+                                    style: const TextStyle(
+                                      color: Color(0xFF6D655F),
+                                      height: 1.4,
+                                    ),
+                                  ),
+                                  const SizedBox(height: 8),
+                                  Text(
+                                    '${item.request.eventType} • ${item.request.dateLabel}',
+                                    style: TextStyle(
+                                      fontSize: 12,
+                                      fontWeight: FontWeight.w700,
+                                      color: item.isPositive
+                                          ? const Color(0xFF218C4F)
+                                          : const Color(0xFFD54343),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                ],
+              ),
+            );
+          },
+        );
+      },
+    );
   }
 
   @override
@@ -58,14 +211,21 @@ class _HomeScreenState extends State<HomeScreen> {
     final topHosts = filteredHosts.take(3).toList();
     final newHosts = filteredHosts.length > 3 ? filteredHosts.skip(3).toList() : <DemoUserHost>[];
 
-    return Scaffold(
-      backgroundColor: const Color(0xFFF5F1E8),
-      bottomNavigationBar: const UserBottomNav(currentRoute: '/home'),
-      body: SafeArea(
-        bottom: false,
-        child: SingleChildScrollView(
-          child: Column(
-            children: [
+    return ValueListenableBuilder<List<DemoMeetRequest>>(
+      valueListenable: demoScheduleStore,
+      builder: (context, _, __) {
+        final notifications = demoScheduleStore.notificationsForUser(
+          demoCurrentUserName,
+        );
+
+        return Scaffold(
+          backgroundColor: const Color(0xFFF5F1E8),
+          bottomNavigationBar: const UserBottomNav(currentRoute: '/home'),
+          body: SafeArea(
+            bottom: false,
+            child: SingleChildScrollView(
+              child: Column(
+                children: [
                   // Header
                   Padding(
                 padding: const EdgeInsets.fromLTRB(24, 24, 24, 0),
@@ -94,7 +254,42 @@ class _HomeScreenState extends State<HomeScreen> {
                               ),
                             ),
                             const SizedBox(width: 12),
-                            Icon(Icons.notifications, color: Colors.brown, size: 28),
+                            Stack(
+                              children: [
+                                IconButton(
+                                  onPressed: () =>
+                                      _openScheduleNotifications(notifications),
+                                  icon: const Icon(
+                                    Icons.notifications,
+                                    color: Colors.brown,
+                                    size: 28,
+                                  ),
+                                ),
+                                if (notifications.isNotEmpty)
+                                  Positioned(
+                                    right: 4,
+                                    top: 2,
+                                    child: Container(
+                                      width: 18,
+                                      height: 18,
+                                      decoration: const BoxDecoration(
+                                        color: Color(0xFFE34B57),
+                                        shape: BoxShape.circle,
+                                      ),
+                                      child: Center(
+                                        child: Text(
+                                          '${notifications.length}',
+                                          style: const TextStyle(
+                                            color: Colors.white,
+                                            fontSize: 10,
+                                            fontWeight: FontWeight.w700,
+                                          ),
+                                        ),
+                                      ),
+                                    ),
+                                  ),
+                              ],
+                            ),
                           ],
                         ),
                       ],
@@ -219,10 +414,12 @@ class _HomeScreenState extends State<HomeScreen> {
                   padding: EdgeInsets.symmetric(vertical: 48),
                   child: Text('No hosts found matching your search', style: TextStyle(color: Colors.black54)),
                 ),
-            ],
+                ],
+              ),
+            ),
           ),
-        ),
-      ),
+        );
+      },
     );
   }
 

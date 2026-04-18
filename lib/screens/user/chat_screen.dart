@@ -27,14 +27,15 @@ class _ChatMessage {
 }
 
 class ChatScreen extends StatefulWidget {
-  const ChatScreen({Key? key}) : super(key: key);
+  const ChatScreen({Key? key, this.host}) : super(key: key);
+
+  final DemoUserHost? host;
 
   @override
   State<ChatScreen> createState() => _ChatScreenState();
 }
 
 class _ChatScreenState extends State<ChatScreen> {
-  final host = demoUserHosts.first;
   final TextEditingController _messageController = TextEditingController();
   final List<_ChatMessage> _messages = [
     const _ChatMessage(id: 1, text: "Hi! How's your day? 😊", sender: 'host', timestamp: '04:52'),
@@ -135,6 +136,8 @@ class _ChatScreenState extends State<ChatScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final host = widget.host ?? demoUserHosts.first;
+
     return Scaffold(
       backgroundColor: Colors.white,
       body: SafeArea(

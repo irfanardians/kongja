@@ -14,6 +14,7 @@
 
 import 'package:flutter/material.dart';
 
+import '../../shared/demo_schedule_store.dart';
 import 'user_ui_shared.dart';
 
 class ProfileScreen extends StatefulWidget {
@@ -48,7 +49,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     child: PageView.builder(
                       controller: pageController,
                       itemCount: host.portfolio.length,
-                      onPageChanged: (index) => setModalState(() => currentIndex = index),
+                      onPageChanged: (index) =>
+                          setModalState(() => currentIndex = index),
                       itemBuilder: (context, index) {
                         return InteractiveViewer(
                           minScale: 1,
@@ -71,19 +73,29 @@ class _ProfileScreenState extends State<ProfileScreen> {
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
                         Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 12,
+                            vertical: 8,
+                          ),
                           decoration: BoxDecoration(
                             color: Colors.white.withValues(alpha: 0.14),
                             borderRadius: BorderRadius.circular(999),
                           ),
                           child: Text(
                             '${currentIndex + 1} / ${host.portfolio.length}',
-                            style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w700),
+                            style: const TextStyle(
+                              color: Colors.white,
+                              fontWeight: FontWeight.w700,
+                            ),
                           ),
                         ),
                         IconButton(
                           onPressed: () => Navigator.pop(context),
-                          icon: const Icon(Icons.close_rounded, color: Colors.white, size: 30),
+                          icon: const Icon(
+                            Icons.close_rounded,
+                            color: Colors.white,
+                            size: 30,
+                          ),
                         ),
                       ],
                     ),
@@ -100,14 +112,24 @@ class _ProfileScreenState extends State<ProfileScreen> {
   }
 
   Future<void> _showPaymentSheet(String type) async {
-    final multiplier = type == 'chat' ? 1.0 : type == 'voice' ? 1.5 : 2.0;
+    final multiplier = type == 'chat'
+        ? 1.0
+        : type == 'voice'
+        ? 1.5
+        : 2.0;
     final hourlyRate = (host.pricePerMin * 60 * multiplier).round();
-    final title = type == 'chat' ? 'Start Chat' : type == 'voice' ? 'Start Voice Call' : 'Start Video Call';
+    final title = type == 'chat'
+        ? 'Start Chat'
+        : type == 'voice'
+        ? 'Start Voice Call'
+        : 'Start Video Call';
 
     await showModalBottomSheet<void>(
       context: context,
       backgroundColor: Colors.white,
-      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(28))),
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
+      ),
       builder: (context) {
         return Padding(
           padding: const EdgeInsets.fromLTRB(24, 20, 24, 32),
@@ -117,13 +139,26 @@ class _ProfileScreenState extends State<ProfileScreen> {
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  Text(title, style: const TextStyle(fontSize: 24, fontWeight: FontWeight.w700)),
-                  IconButton(onPressed: () => Navigator.pop(context), icon: const Icon(Icons.close_rounded)),
+                  Text(
+                    title,
+                    style: const TextStyle(
+                      fontSize: 24,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                  IconButton(
+                    onPressed: () => Navigator.pop(context),
+                    icon: const Icon(Icons.close_rounded),
+                  ),
                 ],
               ),
               const SizedBox(height: 8),
               Text(
-                type == 'chat' ? 'You will be charged per hour for chatting' : type == 'voice' ? 'You will be charged per hour for voice calling' : 'You will be charged per hour for video calling',
+                type == 'chat'
+                    ? 'You will be charged per hour for chatting'
+                    : type == 'voice'
+                    ? 'You will be charged per hour for voice calling'
+                    : 'You will be charged per hour for video calling',
                 textAlign: TextAlign.center,
                 style: const TextStyle(color: Color(0xFF817A74)),
               ),
@@ -132,16 +167,33 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 width: double.infinity,
                 padding: const EdgeInsets.all(18),
                 decoration: BoxDecoration(
-                  gradient: const LinearGradient(colors: [Color(0xFFFFF6EA), Color(0xFFFFEBD9)]),
+                  gradient: const LinearGradient(
+                    colors: [Color(0xFFFFF6EA), Color(0xFFFFEBD9)],
+                  ),
                   borderRadius: BorderRadius.circular(20),
                 ),
                 child: Column(
                   children: [
-                    const Text('Current Balance', style: TextStyle(color: Color(0xFF817A74))),
+                    const Text(
+                      'Current Balance',
+                      style: TextStyle(color: Color(0xFF817A74)),
+                    ),
                     const SizedBox(height: 4),
-                    const Text('🪙 1,250', style: TextStyle(fontSize: 26, fontWeight: FontWeight.w700)),
+                    const Text(
+                      '🪙 1,250',
+                      style: TextStyle(
+                        fontSize: 26,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
                     const SizedBox(height: 12),
-                    Text('Rate: 🪙 $hourlyRate / hour', style: const TextStyle(fontWeight: FontWeight.w700, color: userAmberDark)),
+                    Text(
+                      'Rate: 🪙 $hourlyRate / hour',
+                      style: const TextStyle(
+                        fontWeight: FontWeight.w700,
+                        color: userAmberDark,
+                      ),
+                    ),
                   ],
                 ),
               ),
@@ -154,10 +206,21 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     if (type == 'chat') {
                       Navigator.pushNamed(context, '/chat');
                     } else {
-                      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('$title started with ${host.name}')));
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(
+                          content: Text('$title started with ${host.name}'),
+                        ),
+                      );
                     }
                   },
-                  style: FilledButton.styleFrom(backgroundColor: userAmberDark, foregroundColor: Colors.white, minimumSize: const Size.fromHeight(52), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18))),
+                  style: FilledButton.styleFrom(
+                    backgroundColor: userAmberDark,
+                    foregroundColor: Colors.white,
+                    minimumSize: const Size.fromHeight(52),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(18),
+                    ),
+                  ),
                   child: const Text('Confirm'),
                 ),
               ),
@@ -169,44 +232,37 @@ class _ProfileScreenState extends State<ProfileScreen> {
   }
 
   Future<void> _handleMeet() async {
-    await showDialog<void>(
+    final request = await showModalBottomSheet<DemoMeetRequest>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (context) => _MeetOfflineSheet(
+        hostName: host.name,
+        hostLocation: host.location,
+        verificationBypassed: !idVerified || !selfieVerified,
+      ),
+    );
+
+    if (request == null || !mounted) {
+      return;
+    }
+
+    demoScheduleStore.addRequest(request);
+
+    showDialog<void>(
       context: context,
       builder: (context) => AlertDialog(
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
-        title: const Text('Meet Offline'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text('Request an offline meeting with ${host.name} in ${host.location}.'),
-            if (!idVerified || !selfieVerified) ...[
-              const SizedBox(height: 12),
-              Container(
-                padding: const EdgeInsets.all(12),
-                decoration: BoxDecoration(
-                  color: const Color(0xFFFFF4E6),
-                  borderRadius: BorderRadius.circular(14),
-                ),
-                child: const Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Icon(Icons.info_outline_rounded, color: userAmberDark, size: 18),
-                    SizedBox(width: 8),
-                    Expanded(
-                      child: Text(
-                        'Demo mode: verification is temporarily bypassed so you can preview this UI flow.',
-                        style: TextStyle(fontSize: 12, color: userAmberDark),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ],
-          ],
+        title: const Text('Schedule Request Sent'),
+        content: const Text(
+          'Your schedule request has been sent to the talent. Please wait for their response to see whether they accept or decline it.',
         ),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancel')),
-          FilledButton(onPressed: () => Navigator.pop(context), style: FilledButton.styleFrom(backgroundColor: userAmberDark), child: const Text('Send Request')),
+          FilledButton(
+            onPressed: () => Navigator.pop(context),
+            style: FilledButton.styleFrom(backgroundColor: userAmberDark),
+            child: const Text('OK'),
+          ),
         ],
       ),
     );
@@ -217,12 +273,18 @@ class _ProfileScreenState extends State<ProfileScreen> {
     return Scaffold(
       body: Stack(
         children: [
-          Positioned.fill(child: Image.network(host.imageUrl, fit: BoxFit.cover)),
+          Positioned.fill(
+            child: Image.network(host.imageUrl, fit: BoxFit.cover),
+          ),
           Positioned.fill(
             child: DecoratedBox(
               decoration: BoxDecoration(
                 gradient: LinearGradient(
-                  colors: [Colors.transparent, Colors.black.withValues(alpha: 0.45), const Color(0xFF171717)],
+                  colors: [
+                    Colors.transparent,
+                    Colors.black.withValues(alpha: 0.45),
+                    const Color(0xFF171717),
+                  ],
                   begin: Alignment.topCenter,
                   end: Alignment.bottomCenter,
                 ),
@@ -237,16 +299,34 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   child: Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
-                      _glassButton(Icons.chevron_left_rounded, () => Navigator.pop(context)),
+                      _glassButton(
+                        Icons.chevron_left_rounded,
+                        () => Navigator.pop(context),
+                      ),
                       Row(
                         children: [
-                          _glassButton(isFavorite ? Icons.favorite_rounded : Icons.favorite_border_rounded, () => setState(() => isFavorite = !isFavorite), active: isFavorite),
+                          _glassButton(
+                            isFavorite
+                                ? Icons.favorite_rounded
+                                : Icons.favorite_border_rounded,
+                            () => setState(() => isFavorite = !isFavorite),
+                            active: isFavorite,
+                          ),
                           const SizedBox(width: 10),
                           Container(
                             width: 42,
                             height: 42,
-                            decoration: BoxDecoration(color: const Color(0xFF2FA655), borderRadius: BorderRadius.circular(999)),
-                            child: const Center(child: Icon(Icons.circle, size: 14, color: Colors.white)),
+                            decoration: BoxDecoration(
+                              color: const Color(0xFF2FA655),
+                              borderRadius: BorderRadius.circular(999),
+                            ),
+                            child: const Center(
+                              child: Icon(
+                                Icons.circle,
+                                size: 14,
+                                color: Colors.white,
+                              ),
+                            ),
                           ),
                         ],
                       ),
@@ -260,9 +340,22 @@ class _ProfileScreenState extends State<ProfileScreen> {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         const SizedBox(height: 160),
-                        Text('${host.name}, ${host.age}', style: const TextStyle(color: Colors.white, fontSize: 40, fontWeight: FontWeight.w700)),
+                        Text(
+                          '${host.name}, ${host.age}',
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontSize: 40,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
                         const SizedBox(height: 6),
-                        Text(host.description, style: const TextStyle(color: Colors.white70, fontSize: 18)),
+                        Text(
+                          host.description,
+                          style: const TextStyle(
+                            color: Colors.white70,
+                            fontSize: 18,
+                          ),
+                        ),
                         const SizedBox(height: 16),
                         Wrap(
                           spacing: 8,
@@ -270,9 +363,18 @@ class _ProfileScreenState extends State<ProfileScreen> {
                           children: host.badges
                               .map(
                                 (badge) => Container(
-                                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                                  decoration: BoxDecoration(color: Colors.white.withValues(alpha: 0.16), borderRadius: BorderRadius.circular(999)),
-                                  child: Text(badge, style: const TextStyle(color: Colors.white)),
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 12,
+                                    vertical: 8,
+                                  ),
+                                  decoration: BoxDecoration(
+                                    color: Colors.white.withValues(alpha: 0.16),
+                                    borderRadius: BorderRadius.circular(999),
+                                  ),
+                                  child: Text(
+                                    badge,
+                                    style: const TextStyle(color: Colors.white),
+                                  ),
                                 ),
                               )
                               .toList(),
@@ -286,26 +388,53 @@ class _ProfileScreenState extends State<ProfileScreen> {
                               backgroundColor: const Color(0xFFCA6C34),
                               foregroundColor: Colors.white,
                               minimumSize: const Size.fromHeight(54),
-                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(999)),
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(999),
+                              ),
                             ),
-                            child: Text('Chat Now 🪙 ${host.pricePerMin} / Min →', style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w700)),
+                            child: Text(
+                              'Chat Now 🪙 ${host.pricePerMin} / Min →',
+                              style: const TextStyle(
+                                fontSize: 16,
+                                fontWeight: FontWeight.w700,
+                              ),
+                            ),
                           ),
                         ),
                         const SizedBox(height: 18),
                         Container(
                           width: double.infinity,
                           padding: const EdgeInsets.all(16),
-                          decoration: BoxDecoration(color: Colors.white.withValues(alpha: 0.12), borderRadius: BorderRadius.circular(24)),
+                          decoration: BoxDecoration(
+                            color: Colors.white.withValues(alpha: 0.12),
+                            borderRadius: BorderRadius.circular(24),
+                          ),
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
                               Row(
                                 children: [
-                                  const Icon(Icons.photo_library_outlined, color: Colors.white),
+                                  const Icon(
+                                    Icons.photo_library_outlined,
+                                    color: Colors.white,
+                                  ),
                                   const SizedBox(width: 8),
-                                  const Text('Photos', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w700, fontSize: 16)),
+                                  const Text(
+                                    'Photos',
+                                    style: TextStyle(
+                                      color: Colors.white,
+                                      fontWeight: FontWeight.w700,
+                                      fontSize: 16,
+                                    ),
+                                  ),
                                   const Spacer(),
-                                  Text('${host.portfolio.length} photos', style: const TextStyle(color: Colors.white70, fontSize: 13)),
+                                  Text(
+                                    '${host.portfolio.length} photos',
+                                    style: const TextStyle(
+                                      color: Colors.white70,
+                                      fontSize: 13,
+                                    ),
+                                  ),
                                 ],
                               ),
                               const SizedBox(height: 14),
@@ -313,7 +442,12 @@ class _ProfileScreenState extends State<ProfileScreen> {
                                 shrinkWrap: true,
                                 physics: const NeverScrollableScrollPhysics(),
                                 itemCount: host.portfolio.length,
-                                gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(crossAxisCount: 4, mainAxisSpacing: 8, crossAxisSpacing: 8),
+                                gridDelegate:
+                                    const SliverGridDelegateWithFixedCrossAxisCount(
+                                      crossAxisCount: 4,
+                                      mainAxisSpacing: 8,
+                                      crossAxisSpacing: 8,
+                                    ),
                                 itemBuilder: (context, index) => InkWell(
                                   onTap: () => _openPhotoGallery(index),
                                   borderRadius: BorderRadius.circular(12),
@@ -322,7 +456,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
                                     children: [
                                       ClipRRect(
                                         borderRadius: BorderRadius.circular(12),
-                                        child: Image.network(host.portfolio[index], fit: BoxFit.cover),
+                                        child: Image.network(
+                                          host.portfolio[index],
+                                          fit: BoxFit.cover,
+                                        ),
                                       ),
                                       if (index == 0)
                                         Positioned(
@@ -331,10 +468,17 @@ class _ProfileScreenState extends State<ProfileScreen> {
                                           child: Container(
                                             padding: const EdgeInsets.all(4),
                                             decoration: BoxDecoration(
-                                              color: Colors.black.withValues(alpha: 0.42),
-                                              borderRadius: BorderRadius.circular(999),
+                                              color: Colors.black.withValues(
+                                                alpha: 0.42,
+                                              ),
+                                              borderRadius:
+                                                  BorderRadius.circular(999),
                                             ),
-                                            child: const Icon(Icons.zoom_in_rounded, color: Colors.white, size: 14),
+                                            child: const Icon(
+                                              Icons.zoom_in_rounded,
+                                              color: Colors.white,
+                                              size: 14,
+                                            ),
                                           ),
                                         ),
                                     ],
@@ -347,28 +491,76 @@ class _ProfileScreenState extends State<ProfileScreen> {
                         const SizedBox(height: 18),
                         Row(
                           children: [
-                            Expanded(child: _actionCard(Icons.call_rounded, 'Voice', 'Talk live by voice', const Color(0xFF31B56A), () => _showPaymentSheet('voice'))),
+                            Expanded(
+                              child: _actionCard(
+                                Icons.call_rounded,
+                                'Voice',
+                                'Talk live by voice',
+                                const Color(0xFF31B56A),
+                                () => _showPaymentSheet('voice'),
+                              ),
+                            ),
                             const SizedBox(width: 12),
-                            Expanded(child: _actionCard(Icons.videocam_rounded, 'Video', 'Start face-to-face call', const Color(0xFF7A5AF8), () => _showPaymentSheet('video'))),
+                            Expanded(
+                              child: _actionCard(
+                                Icons.videocam_rounded,
+                                'Video',
+                                'Start face-to-face call',
+                                const Color(0xFF7A5AF8),
+                                () => _showPaymentSheet('video'),
+                              ),
+                            ),
                             const SizedBox(width: 12),
-                            Expanded(child: _actionCard(Icons.location_on_rounded, 'Meet', 'Preview offline request', const Color(0xFFCA6C34), _handleMeet, showWarning: !idVerified || !selfieVerified)),
+                            Expanded(
+                              child: _actionCard(
+                                Icons.location_on_rounded,
+                                'Meet',
+                                'Preview offline request',
+                                const Color(0xFFCA6C34),
+                                _handleMeet,
+                                showWarning: !idVerified || !selfieVerified,
+                              ),
+                            ),
                           ],
                         ),
                         const SizedBox(height: 18),
                         Container(
                           width: double.infinity,
                           padding: const EdgeInsets.all(16),
-                          decoration: BoxDecoration(color: Colors.white.withValues(alpha: 0.12), borderRadius: BorderRadius.circular(24)),
+                          decoration: BoxDecoration(
+                            color: Colors.white.withValues(alpha: 0.12),
+                            borderRadius: BorderRadius.circular(24),
+                          ),
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
                               Row(
                                 children: [
-                                  const Text('Reviews', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w700, fontSize: 16)),
+                                  const Text(
+                                    'Reviews',
+                                    style: TextStyle(
+                                      color: Colors.white,
+                                      fontWeight: FontWeight.w700,
+                                      fontSize: 16,
+                                    ),
+                                  ),
                                   const SizedBox(width: 8),
-                                  ...List.generate(5, (index) => const Icon(Icons.star_rounded, size: 16, color: Color(0xFFF1B62D))),
+                                  ...List.generate(
+                                    5,
+                                    (index) => const Icon(
+                                      Icons.star_rounded,
+                                      size: 16,
+                                      color: Color(0xFFF1B62D),
+                                    ),
+                                  ),
                                   const SizedBox(width: 6),
-                                  Text('${host.rating} (${host.reviewCount} Reviews)', style: const TextStyle(color: Colors.white70, fontSize: 13)),
+                                  Text(
+                                    '${host.rating} (${host.reviewCount} Reviews)',
+                                    style: const TextStyle(
+                                      color: Colors.white70,
+                                      fontSize: 13,
+                                    ),
+                                  ),
                                 ],
                               ),
                               const SizedBox(height: 14),
@@ -377,23 +569,43 @@ class _ProfileScreenState extends State<ProfileScreen> {
                                 children: [
                                   const CircleAvatar(
                                     radius: 20,
-                                    backgroundImage: NetworkImage('https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=100'),
+                                    backgroundImage: NetworkImage(
+                                      'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=100',
+                                    ),
                                   ),
                                   const SizedBox(width: 12),
                                   const Expanded(
                                     child: Column(
-                                      crossAxisAlignment: CrossAxisAlignment.start,
+                                      crossAxisAlignment:
+                                          CrossAxisAlignment.start,
                                       children: [
-                                        Text('Aditya', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w700)),
+                                        Text(
+                                          'Aditya',
+                                          style: TextStyle(
+                                            color: Colors.white,
+                                            fontWeight: FontWeight.w700,
+                                          ),
+                                        ),
                                         SizedBox(height: 4),
-                                        Text('Clara is really sweet and easy to talk to. Always makes me smile!', style: TextStyle(color: Colors.white70)),
+                                        Text(
+                                          'Clara is really sweet and easy to talk to. Always makes me smile!',
+                                          style: TextStyle(
+                                            color: Colors.white70,
+                                          ),
+                                        ),
                                       ],
                                     ),
                                   ),
                                 ],
                               ),
                               const SizedBox(height: 12),
-                              const Text('♥ 125 Reviews', style: TextStyle(color: Color(0xFFF1B62D), fontWeight: FontWeight.w600)),
+                              const Text(
+                                '♥ 125 Reviews',
+                                style: TextStyle(
+                                  color: Color(0xFFF1B62D),
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
                             ],
                           ),
                         ),
@@ -405,24 +617,41 @@ class _ProfileScreenState extends State<ProfileScreen> {
             ),
           ),
         ],
-        ),
+      ),
     );
   }
 
-  Widget _glassButton(IconData icon, VoidCallback onTap, {bool active = false}) {
+  Widget _glassButton(
+    IconData icon,
+    VoidCallback onTap, {
+    bool active = false,
+  }) {
     return InkWell(
       borderRadius: BorderRadius.circular(999),
       onTap: onTap,
       child: Container(
         width: 42,
         height: 42,
-        decoration: BoxDecoration(color: Colors.white.withValues(alpha: 0.18), borderRadius: BorderRadius.circular(999)),
-        child: Icon(icon, color: active ? const Color(0xFFE95A69) : Colors.white),
+        decoration: BoxDecoration(
+          color: Colors.white.withValues(alpha: 0.18),
+          borderRadius: BorderRadius.circular(999),
+        ),
+        child: Icon(
+          icon,
+          color: active ? const Color(0xFFE95A69) : Colors.white,
+        ),
       ),
     );
   }
 
-  Widget _actionCard(IconData icon, String label, String subtitle, Color accentColor, VoidCallback onTap, {bool showWarning = false}) {
+  Widget _actionCard(
+    IconData icon,
+    String label,
+    String subtitle,
+    Color accentColor,
+    VoidCallback onTap, {
+    bool showWarning = false,
+  }) {
     return InkWell(
       onTap: onTap,
       borderRadius: BorderRadius.circular(18),
@@ -433,7 +662,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 16),
             decoration: BoxDecoration(
               gradient: LinearGradient(
-                colors: [accentColor.withValues(alpha: 0.30), Colors.white.withValues(alpha: 0.10)],
+                colors: [
+                  accentColor.withValues(alpha: 0.30),
+                  Colors.white.withValues(alpha: 0.10),
+                ],
                 begin: Alignment.topCenter,
                 end: Alignment.bottomCenter,
               ),
@@ -452,12 +684,23 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   child: Icon(icon, color: Colors.white),
                 ),
                 const SizedBox(height: 10),
-                Text(label, style: const TextStyle(color: Colors.white, fontSize: 14, fontWeight: FontWeight.w700)),
+                Text(
+                  label,
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 14,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
                 const SizedBox(height: 4),
                 Text(
                   subtitle,
                   textAlign: TextAlign.center,
-                  style: const TextStyle(color: Colors.white70, fontSize: 11, height: 1.3),
+                  style: const TextStyle(
+                    color: Colors.white70,
+                    fontSize: 11,
+                    height: 1.3,
+                  ),
                 ),
               ],
             ),
@@ -469,12 +712,920 @@ class _ProfileScreenState extends State<ProfileScreen> {
               child: Container(
                 width: 18,
                 height: 18,
-                decoration: const BoxDecoration(color: Color(0xFFE34A57), shape: BoxShape.circle),
-                child: const Center(child: Text('!', style: TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.w700))),
+                decoration: const BoxDecoration(
+                  color: Color(0xFFE34A57),
+                  shape: BoxShape.circle,
+                ),
+                child: const Center(
+                  child: Text(
+                    '!',
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontSize: 11,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                ),
               ),
             ),
         ],
       ),
+    );
+  }
+}
+
+class _MeetOfflineSheet extends StatefulWidget {
+  const _MeetOfflineSheet({
+    required this.hostName,
+    required this.hostLocation,
+    required this.verificationBypassed,
+  });
+
+  final String hostName;
+  final String hostLocation;
+  final bool verificationBypassed;
+
+  @override
+  State<_MeetOfflineSheet> createState() => _MeetOfflineSheetState();
+}
+
+class _MeetOfflineSheetState extends State<_MeetOfflineSheet> {
+  static const List<String> _eventTypes = ['Casual Event', 'Formal Event'];
+  static const List<String> _weekdayLabels = [
+    'Sun',
+    'Mon',
+    'Tue',
+    'Wed',
+    'Thu',
+    'Fri',
+    'Sat',
+  ];
+
+  final TextEditingController _meetingAddressController =
+      TextEditingController();
+  final TextEditingController _landmarkController = TextEditingController();
+
+  String _selectedEventType = _eventTypes.first;
+  late DateTime _selectedDate;
+  late DateTime _visibleMonth;
+  int? _selectedStartHour;
+  int? _selectedDuration;
+
+  @override
+  void initState() {
+    super.initState();
+    final tomorrow = normalizeDemoDate(
+      DateTime.now().add(const Duration(days: 1)),
+    );
+    _selectedDate =
+        demoScheduleStore.firstAvailableDateForHost(
+          hostName: widget.hostName,
+          start: tomorrow,
+        ) ??
+        tomorrow;
+    _visibleMonth = DateTime(_selectedDate.year, _selectedDate.month);
+    _meetingAddressController.text = widget.hostLocation;
+  }
+
+  @override
+  void dispose() {
+    _meetingAddressController.dispose();
+    _landmarkController.dispose();
+    super.dispose();
+  }
+
+  List<int> _availableStartHours() {
+    if (demoScheduleStore.isDateLockedForHost(
+      hostName: widget.hostName,
+      date: _selectedDate,
+    )) {
+      return const [];
+    }
+
+    final hours = <int>[];
+    final now = DateTime.now();
+    for (var hour = 10; hour <= 17; hour++) {
+      final candidate = DateTime(
+        _selectedDate.year,
+        _selectedDate.month,
+        _selectedDate.day,
+        hour,
+      );
+      if (candidate.isAfter(now.add(const Duration(hours: 1)))) {
+        hours.add(hour);
+      }
+    }
+    return hours;
+  }
+
+  List<int> _availableDurations() {
+    final startHour = _selectedStartHour;
+    if (startHour == null) {
+      return const [];
+    }
+    final maxDuration = startHour <= 13 ? 8 : 4;
+    return [for (var hour = 3; hour <= maxDuration; hour++) hour];
+  }
+
+  DateTime get _firstBookableDate => normalizeDemoDate(DateTime.now());
+
+  DateTime get _lastBookableDate =>
+      normalizeDemoDate(DateTime.now().add(const Duration(days: 90)));
+
+  bool _canGoToPreviousMonth() {
+    final previousMonth = DateTime(_visibleMonth.year, _visibleMonth.month - 1);
+    return !previousMonth.isBefore(
+      DateTime(_firstBookableDate.year, _firstBookableDate.month),
+    );
+  }
+
+  bool _canGoToNextMonth() {
+    final nextMonth = DateTime(_visibleMonth.year, _visibleMonth.month + 1);
+    return !nextMonth.isAfter(
+      DateTime(_lastBookableDate.year, _lastBookableDate.month),
+    );
+  }
+
+  List<_CalendarDayCell> _calendarCells() {
+    final firstDayOfMonth = DateTime(
+      _visibleMonth.year,
+      _visibleMonth.month,
+      1,
+    );
+    final leadingEmptyDays = firstDayOfMonth.weekday % 7;
+    final cells = <_CalendarDayCell>[];
+
+    for (var index = 0; index < 42; index++) {
+      final dayOffset = index - leadingEmptyDays;
+      final date = DateTime(
+        _visibleMonth.year,
+        _visibleMonth.month,
+        1 + dayOffset,
+      );
+      final normalizedDate = normalizeDemoDate(date);
+      final isCurrentMonth = date.month == _visibleMonth.month;
+      final isOutOfRange =
+          normalizedDate.isBefore(_firstBookableDate) ||
+          normalizedDate.isAfter(_lastBookableDate);
+      final isHoliday =
+          isCurrentMonth &&
+          demoScheduleStore.isTalentHoliday(
+            hostName: widget.hostName,
+            date: normalizedDate,
+          );
+      final isBooked =
+          isCurrentMonth &&
+          !isHoliday &&
+          demoScheduleStore.hasActiveBookingOnDate(
+            hostName: widget.hostName,
+            date: normalizedDate,
+          );
+      final isSelectable =
+          isCurrentMonth && !isOutOfRange && !isHoliday && !isBooked;
+
+      cells.add(
+        _CalendarDayCell(
+          date: normalizedDate,
+          dayNumber: date.day,
+          isCurrentMonth: isCurrentMonth,
+          isSelectable: isSelectable,
+          isHoliday: isHoliday,
+          isBooked: isBooked,
+          isSelected:
+              isCurrentMonth && isSameDemoDate(_selectedDate, normalizedDate),
+        ),
+      );
+    }
+
+    return cells;
+  }
+
+  void _selectDate(DateTime date) {
+    if (demoScheduleStore.isDateLockedForHost(
+      hostName: widget.hostName,
+      date: date,
+    )) {
+      return;
+    }
+    setState(() {
+      _selectedDate = date;
+      _selectedStartHour = null;
+      _selectedDuration = null;
+    });
+  }
+
+  void _confirmRequest() {
+    if (_meetingAddressController.text.trim().isEmpty ||
+        _landmarkController.text.trim().isEmpty ||
+        _selectedStartHour == null ||
+        _selectedDuration == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+            'Please complete the event type, address, landmark, date, time, and duration first.',
+          ),
+        ),
+      );
+      return;
+    }
+
+    if (demoScheduleStore.isDateLockedForHost(
+      hostName: widget.hostName,
+      date: _selectedDate,
+    )) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+            'This date is unavailable because the talent is on holiday or another user has already booked it. Please choose a different date.',
+          ),
+        ),
+      );
+      return;
+    }
+
+    final request = demoScheduleStore.createRequest(
+      hostName: widget.hostName,
+      eventType: _selectedEventType,
+      meetingAddress: _meetingAddressController.text.trim(),
+      landmark: _landmarkController.text.trim(),
+      date: _selectedDate,
+      startHour: _selectedStartHour!,
+      durationHours: _selectedDuration!,
+    );
+
+    Navigator.pop(context, request);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final bottomInset = MediaQuery.of(context).viewInsets.bottom;
+    final availableStartHours = _availableStartHours();
+    final availableDurations = _availableDurations();
+    final calendarCells = _calendarCells();
+    final monthLabel = _monthLabel(_visibleMonth);
+
+    if (_selectedStartHour != null &&
+        !availableStartHours.contains(_selectedStartHour)) {
+      _selectedStartHour = null;
+      _selectedDuration = null;
+    }
+    if (_selectedDuration != null &&
+        !availableDurations.contains(_selectedDuration)) {
+      _selectedDuration = null;
+    }
+
+    return SafeArea(
+      top: false,
+      child: Padding(
+        padding: EdgeInsets.only(bottom: bottomInset),
+        child: DraggableScrollableSheet(
+          initialChildSize: 0.92,
+          minChildSize: 0.72,
+          maxChildSize: 0.96,
+          expand: false,
+          builder: (context, scrollController) {
+            return Container(
+              decoration: const BoxDecoration(
+                color: Color(0xFFFFFBF6),
+                borderRadius: BorderRadius.vertical(top: Radius.circular(30)),
+              ),
+              child: Column(
+                children: [
+                  const SizedBox(height: 12),
+                  Container(
+                    width: 56,
+                    height: 5,
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFD7C9B8),
+                      borderRadius: BorderRadius.circular(999),
+                    ),
+                  ),
+                  Expanded(
+                    child: ListView(
+                      controller: scrollController,
+                      padding: const EdgeInsets.fromLTRB(20, 18, 20, 24),
+                      children: [
+                        Row(
+                          children: [
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  const Text(
+                                    'Meet Offline',
+                                    style: TextStyle(
+                                      fontSize: 24,
+                                      fontWeight: FontWeight.w800,
+                                      color: Color(0xFF221A14),
+                                    ),
+                                  ),
+                                  const SizedBox(height: 4),
+                                  Text(
+                                    'Book a date with ${widget.hostName}',
+                                    style: const TextStyle(
+                                      color: Color(0xFF7D6F64),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                            IconButton(
+                              onPressed: () => Navigator.pop(context),
+                              icon: const Icon(Icons.close_rounded),
+                            ),
+                          ],
+                        ),
+                        if (widget.verificationBypassed) ...[
+                          const SizedBox(height: 12),
+                          Container(
+                            padding: const EdgeInsets.all(14),
+                            decoration: BoxDecoration(
+                              color: const Color(0xFFFFF1E3),
+                              borderRadius: BorderRadius.circular(18),
+                              border: Border.all(
+                                color: const Color(0xFFFFD3AA),
+                              ),
+                            ),
+                            child: const Row(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Icon(
+                                  Icons.info_outline_rounded,
+                                  color: userAmberDark,
+                                  size: 18,
+                                ),
+                                SizedBox(width: 10),
+                                Expanded(
+                                  child: Text(
+                                    'Demo mode is active. ID and selfie verification are temporarily bypassed so you can preview the full meet request flow.',
+                                    style: TextStyle(
+                                      fontSize: 12,
+                                      color: userAmberDark,
+                                      height: 1.4,
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
+                        const SizedBox(height: 18),
+                        _sheetSectionTitle(
+                          Icons.auto_awesome_rounded,
+                          'Event Type',
+                        ),
+                        const SizedBox(height: 10),
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 16),
+                          decoration: BoxDecoration(
+                            color: Colors.white,
+                            borderRadius: BorderRadius.circular(18),
+                            border: Border.all(color: const Color(0xFFE8DCCF)),
+                          ),
+                          child: DropdownButtonHideUnderline(
+                            child: DropdownButton<String>(
+                              value: _selectedEventType,
+                              isExpanded: true,
+                              borderRadius: BorderRadius.circular(18),
+                              items: _eventTypes
+                                  .map(
+                                    (type) => DropdownMenuItem<String>(
+                                      value: type,
+                                      child: Text(
+                                        type,
+                                        style: const TextStyle(
+                                          fontWeight: FontWeight.w600,
+                                        ),
+                                      ),
+                                    ),
+                                  )
+                                  .toList(),
+                              onChanged: (value) {
+                                if (value == null) {
+                                  return;
+                                }
+                                setState(() => _selectedEventType = value);
+                              },
+                            ),
+                          ),
+                        ),
+                        const SizedBox(height: 18),
+                        _sheetSectionTitle(
+                          Icons.location_on_outlined,
+                          'Meeting Location',
+                        ),
+                        const SizedBox(height: 10),
+                        _sheetField(
+                          controller: _meetingAddressController,
+                          label: 'Meeting address',
+                          hint: 'Enter the full address for the meetup',
+                          maxLines: 2,
+                        ),
+                        const SizedBox(height: 12),
+                        _sheetField(
+                          controller: _landmarkController,
+                          label: 'Landmark',
+                          hint:
+                              'Example: main lobby entrance or next to the coffee shop',
+                        ),
+                        const SizedBox(height: 18),
+                        _sheetSectionTitle(
+                          Icons.calendar_today_rounded,
+                          'Meeting Calendar',
+                        ),
+                        const SizedBox(height: 10),
+                        Container(
+                          padding: const EdgeInsets.fromLTRB(14, 14, 14, 16),
+                          decoration: BoxDecoration(
+                            color: Colors.white,
+                            borderRadius: BorderRadius.circular(22),
+                            border: Border.all(color: const Color(0xFFE8DCCF)),
+                          ),
+                          child: Column(
+                            children: [
+                              Row(
+                                mainAxisAlignment:
+                                    MainAxisAlignment.spaceBetween,
+                                children: [
+                                  IconButton(
+                                    onPressed: _canGoToPreviousMonth()
+                                        ? () => setState(
+                                            () => _visibleMonth = DateTime(
+                                              _visibleMonth.year,
+                                              _visibleMonth.month - 1,
+                                            ),
+                                          )
+                                        : null,
+                                    icon: const Icon(
+                                      Icons.chevron_left_rounded,
+                                    ),
+                                  ),
+                                  Text(
+                                    monthLabel,
+                                    style: const TextStyle(
+                                      fontSize: 15,
+                                      fontWeight: FontWeight.w800,
+                                      color: Color(0xFF2C2018),
+                                    ),
+                                  ),
+                                  IconButton(
+                                    onPressed: _canGoToNextMonth()
+                                        ? () => setState(
+                                            () => _visibleMonth = DateTime(
+                                              _visibleMonth.year,
+                                              _visibleMonth.month + 1,
+                                            ),
+                                          )
+                                        : null,
+                                    icon: const Icon(
+                                      Icons.chevron_right_rounded,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                              const SizedBox(height: 6),
+                              Wrap(
+                                spacing: 12,
+                                runSpacing: 8,
+                                alignment: WrapAlignment.center,
+                                children: [
+                                  _calendarLegend(
+                                    const Color(0xFFCA6C34),
+                                    'Selected',
+                                  ),
+                                  _calendarLegend(
+                                    const Color(0xFFE34A57),
+                                    'Holiday',
+                                  ),
+                                  _calendarLegend(
+                                    const Color(0xFFB0B7C3),
+                                    'Booked',
+                                  ),
+                                ],
+                              ),
+                              const SizedBox(height: 14),
+                              Row(
+                                children: _weekdayLabels
+                                    .map(
+                                      (label) => Expanded(
+                                        child: Center(
+                                          child: Text(
+                                            label,
+                                            style: const TextStyle(
+                                              fontSize: 11,
+                                              fontWeight: FontWeight.w700,
+                                              color: Color(0xFF8A7C70),
+                                            ),
+                                          ),
+                                        ),
+                                      ),
+                                    )
+                                    .toList(),
+                              ),
+                              const SizedBox(height: 10),
+                              GridView.builder(
+                                shrinkWrap: true,
+                                physics: const NeverScrollableScrollPhysics(),
+                                itemCount: calendarCells.length,
+                                gridDelegate:
+                                    const SliverGridDelegateWithFixedCrossAxisCount(
+                                      crossAxisCount: 7,
+                                      mainAxisSpacing: 8,
+                                      crossAxisSpacing: 8,
+                                      childAspectRatio: 0.9,
+                                    ),
+                                itemBuilder: (context, index) {
+                                  final cell = calendarCells[index];
+                                  return _calendarDayCell(cell);
+                                },
+                              ),
+                            ],
+                          ),
+                        ),
+                        const SizedBox(height: 18),
+                        _sheetSectionTitle(
+                          Icons.schedule_rounded,
+                          'Meeting Time',
+                        ),
+                        const SizedBox(height: 8),
+                        const Text(
+                          'Duration rules: the minimum is 3 hours. If you choose a start time after 01:00 PM, the maximum duration is 4 hours. If you choose 01:00 PM or earlier, the duration can be 3 to 8 hours.',
+                          style: TextStyle(
+                            fontSize: 12,
+                            color: Color(0xFF7D6F64),
+                            height: 1.4,
+                          ),
+                        ),
+                        const SizedBox(height: 12),
+                        if (availableStartHours.isEmpty)
+                          Container(
+                            padding: const EdgeInsets.all(14),
+                            decoration: BoxDecoration(
+                              color: const Color(0xFFFFF1E3),
+                              borderRadius: BorderRadius.circular(16),
+                            ),
+                            child: Text(
+                              demoScheduleStore.isTalentHoliday(
+                                    hostName: widget.hostName,
+                                    date: _selectedDate,
+                                  )
+                                  ? 'This date has been marked as a holiday by the talent and cannot be selected.'
+                                  : 'This date has already been booked by another user. A talent can only take one booking per date unless that booking is cancelled by the talent.',
+                              style: TextStyle(
+                                color: userAmberDark,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                          )
+                        else
+                          Wrap(
+                            spacing: 10,
+                            runSpacing: 10,
+                            children: availableStartHours
+                                .map(
+                                  (hour) => _choiceChip(
+                                    label: formatDemoHour(hour),
+                                    selected: _selectedStartHour == hour,
+                                    onTap: () {
+                                      setState(() {
+                                        _selectedStartHour = hour;
+                                        _selectedDuration = null;
+                                      });
+                                    },
+                                  ),
+                                )
+                                .toList(),
+                          ),
+                        const SizedBox(height: 16),
+                        _sheetSectionTitle(Icons.timelapse_rounded, 'Duration'),
+                        const SizedBox(height: 10),
+                        Wrap(
+                          spacing: 10,
+                          runSpacing: 10,
+                          children: availableDurations
+                              .map(
+                                (duration) => _choiceChip(
+                                  label: '$duration jam',
+                                  selected: _selectedDuration == duration,
+                                  onTap: () => setState(
+                                    () => _selectedDuration = duration,
+                                  ),
+                                ),
+                              )
+                              .toList(),
+                        ),
+                        if (_selectedStartHour != null &&
+                            _selectedDuration != null) ...[
+                          const SizedBox(height: 18),
+                          Container(
+                            padding: const EdgeInsets.all(16),
+                            decoration: BoxDecoration(
+                              gradient: const LinearGradient(
+                                colors: [Color(0xFFFFF5E7), Color(0xFFFFE8CF)],
+                              ),
+                              borderRadius: BorderRadius.circular(20),
+                            ),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                const Text(
+                                  'Request Summary',
+                                  style: TextStyle(
+                                    fontSize: 16,
+                                    fontWeight: FontWeight.w800,
+                                    color: Color(0xFF2C2018),
+                                  ),
+                                ),
+                                const SizedBox(height: 10),
+                                _summaryRow('Event', _selectedEventType),
+                                _summaryRow(
+                                  'Date',
+                                  formatDemoDate(_selectedDate),
+                                ),
+                                _summaryRow(
+                                  'Time',
+                                  '${formatDemoHour(_selectedStartHour!)} - ${formatDemoHour(_selectedStartHour! + _selectedDuration!)}',
+                                ),
+                                _summaryRow(
+                                  'Duration',
+                                  '$_selectedDuration hours',
+                                ),
+                                _summaryRow('Booking fee', '🪙 500 coins'),
+                              ],
+                            ),
+                          ),
+                        ],
+                        const SizedBox(height: 22),
+                        SizedBox(
+                          width: double.infinity,
+                          child: FilledButton(
+                            onPressed: _confirmRequest,
+                            style: FilledButton.styleFrom(
+                              backgroundColor: userAmberDark,
+                              foregroundColor: Colors.white,
+                              minimumSize: const Size.fromHeight(56),
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(18),
+                              ),
+                            ),
+                            child: const Text(
+                              'Confirm Meet Request',
+                              style: TextStyle(
+                                fontSize: 16,
+                                fontWeight: FontWeight.w700,
+                              ),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            );
+          },
+        ),
+      ),
+    );
+  }
+
+  Widget _sheetSectionTitle(IconData icon, String title) {
+    return Row(
+      children: [
+        Icon(icon, size: 18, color: const Color(0xFF4C3A2E)),
+        const SizedBox(width: 8),
+        Text(
+          title,
+          style: const TextStyle(
+            fontSize: 16,
+            fontWeight: FontWeight.w800,
+            color: Color(0xFF221A14),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _calendarLegend(Color color, String label) {
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Container(
+          width: 10,
+          height: 10,
+          decoration: BoxDecoration(color: color, shape: BoxShape.circle),
+        ),
+        const SizedBox(width: 6),
+        Text(
+          label,
+          style: const TextStyle(
+            fontSize: 12,
+            color: Color(0xFF7D6F64),
+            fontWeight: FontWeight.w600,
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _calendarDayCell(_CalendarDayCell cell) {
+    final Color backgroundColor;
+    final Color borderColor;
+    final Color textColor;
+
+    if (!cell.isCurrentMonth) {
+      backgroundColor = const Color(0xFFF8F4EF);
+      borderColor = Colors.transparent;
+      textColor = const Color(0xFFD1C6BB);
+    } else if (cell.isSelected) {
+      backgroundColor = userAmberDark;
+      borderColor = userAmberDark;
+      textColor = Colors.white;
+    } else if (cell.isHoliday) {
+      backgroundColor = const Color(0xFFFFE6EA);
+      borderColor = const Color(0xFFE34A57);
+      textColor = const Color(0xFFE34A57);
+    } else if (cell.isBooked) {
+      backgroundColor = const Color(0xFFF2F4F7);
+      borderColor = const Color(0xFFB0B7C3);
+      textColor = const Color(0xFF7F8793);
+    } else if (!cell.isSelectable) {
+      backgroundColor = const Color(0xFFF8F4EF);
+      borderColor = const Color(0xFFE8DCCF);
+      textColor = const Color(0xFFC4B8AC);
+    } else {
+      backgroundColor = Colors.white;
+      borderColor = const Color(0xFFE8DCCF);
+      textColor = const Color(0xFF2C2018);
+    }
+
+    return InkWell(
+      borderRadius: BorderRadius.circular(14),
+      onTap: cell.isSelectable ? () => _selectDate(cell.date) : null,
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 160),
+        decoration: BoxDecoration(
+          color: backgroundColor,
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(color: borderColor),
+        ),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Text(
+              '${cell.dayNumber}',
+              style: TextStyle(fontWeight: FontWeight.w800, color: textColor),
+            ),
+            const SizedBox(height: 4),
+            if (cell.isHoliday)
+              const _CalendarStatusDot(color: Color(0xFFE34A57))
+            else if (cell.isBooked)
+              const _CalendarStatusDot(color: Color(0xFF8C95A2))
+            else if (cell.isSelected)
+              const _CalendarStatusDot(color: Colors.white)
+            else
+              const SizedBox(height: 6),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _sheetField({
+    required TextEditingController controller,
+    required String label,
+    required String hint,
+    int maxLines = 1,
+  }) {
+    return TextField(
+      controller: controller,
+      maxLines: maxLines,
+      decoration: InputDecoration(
+        labelText: label,
+        hintText: hint,
+        filled: true,
+        fillColor: Colors.white,
+        border: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(18),
+          borderSide: const BorderSide(color: Color(0xFFE8DCCF)),
+        ),
+        enabledBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(18),
+          borderSide: const BorderSide(color: Color(0xFFE8DCCF)),
+        ),
+        focusedBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(18),
+          borderSide: const BorderSide(color: userAmberDark, width: 1.4),
+        ),
+      ),
+    );
+  }
+
+  Widget _choiceChip({
+    required String label,
+    required bool selected,
+    required VoidCallback onTap,
+  }) {
+    return InkWell(
+      borderRadius: BorderRadius.circular(999),
+      onTap: onTap,
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 180),
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+        decoration: BoxDecoration(
+          color: selected ? userAmberDark : Colors.white,
+          borderRadius: BorderRadius.circular(999),
+          border: Border.all(
+            color: selected ? userAmberDark : const Color(0xFFE8DCCF),
+          ),
+        ),
+        child: Text(
+          label,
+          style: TextStyle(
+            color: selected ? Colors.white : const Color(0xFF5B4B3F),
+            fontWeight: FontWeight.w700,
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _summaryRow(String label, String value) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 6),
+      child: Row(
+        children: [
+          SizedBox(
+            width: 92,
+            child: Text(
+              label,
+              style: const TextStyle(color: Color(0xFF7D6F64)),
+            ),
+          ),
+          Expanded(
+            child: Text(
+              value,
+              style: const TextStyle(
+                fontWeight: FontWeight.w700,
+                color: Color(0xFF2C2018),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  String _monthLabel(DateTime month) {
+    const monthNames = [
+      'January',
+      'February',
+      'March',
+      'April',
+      'May',
+      'June',
+      'July',
+      'August',
+      'September',
+      'October',
+      'November',
+      'December',
+    ];
+    return '${monthNames[month.month - 1]} ${month.year}';
+  }
+}
+
+class _CalendarDayCell {
+  const _CalendarDayCell({
+    required this.date,
+    required this.dayNumber,
+    required this.isCurrentMonth,
+    required this.isSelectable,
+    required this.isHoliday,
+    required this.isBooked,
+    required this.isSelected,
+  });
+
+  final DateTime date;
+  final int dayNumber;
+  final bool isCurrentMonth;
+  final bool isSelectable;
+  final bool isHoliday;
+  final bool isBooked;
+  final bool isSelected;
+}
+
+class _CalendarStatusDot extends StatelessWidget {
+  const _CalendarStatusDot({required this.color});
+
+  final Color color;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: 6,
+      height: 6,
+      decoration: BoxDecoration(color: color, shape: BoxShape.circle),
     );
   }
 }
