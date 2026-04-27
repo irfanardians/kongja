@@ -14,7 +14,10 @@
 
 import 'package:flutter/material.dart';
 
+import '../../core/services/talent_public_profile_service.dart';
+import '../../core/services/user_wallet_service.dart';
 import '../../shared/demo_schedule_store.dart';
+import 'chat_screen.dart';
 import 'user_ui_shared.dart';
 
 class ProfileScreen extends StatefulWidget {
@@ -25,10 +28,270 @@ class ProfileScreen extends StatefulWidget {
 }
 
 class _ProfileScreenState extends State<ProfileScreen> {
-  final host = demoUserHosts.first;
+  DemoUserHost? _host;
+  String? _talentAccountId;
+  bool _didReadRouteArguments = false;
+  bool _isLoadingTalentProfile = false;
+  int _currentBalance = 0;
   bool isFavorite = false;
   bool idVerified = false;
   bool selfieVerified = false;
+
+  DemoUserHost get host => _host ?? demoUserHosts.first;
+
+  bool get _isMeetLocked {
+    final normalizedTier = host.tierLabel.trim().toLowerCase();
+    return normalizedTier == 'bronze' || normalizedTier == 'basic';
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    if (_didReadRouteArguments) {
+      return;
+    }
+    _didReadRouteArguments = true;
+
+    final routeHost = ModalRoute.of(context)?.settings.arguments;
+    if (routeHost is DemoUserHost) {
+      _host = routeHost;
+      final accountId = routeHost.accountId.trim();
+      if (accountId.isNotEmpty) {
+        _talentAccountId = accountId;
+        _loadTalentProfile();
+      }
+    }
+
+    final cachedBalance = UserWalletService.peekCachedAvailableCoinBalance();
+    if (cachedBalance != null) {
+      _currentBalance = cachedBalance;
+    }
+    _loadWalletBalance(forceRefresh: cachedBalance != null);
+  }
+
+  Future<void> _loadWalletBalance({bool forceRefresh = false}) async {
+    try {
+      final balance = await UserWalletService.getAvailableCoinBalance(
+        forceRefresh: forceRefresh,
+      );
+      if (!mounted) {
+        return;
+      }
+
+      setState(() {
+        _currentBalance = balance;
+      });
+    } catch (_) {
+      if (!mounted) {
+        return;
+      }
+    }
+  }
+
+  Future<void> _loadTalentProfile({bool forceRefresh = false}) async {
+    final accountId = _talentAccountId;
+    if (accountId == null || accountId.isEmpty || _isLoadingTalentProfile) {
+      return;
+    }
+
+    setState(() => _isLoadingTalentProfile = true);
+    try {
+      final profile = await TalentPublicProfileService.getTalentProfile(
+        accountId,
+        forceRefresh: forceRefresh,
+      );
+      if (!mounted) {
+        return;
+      }
+
+      setState(() {
+        _host = _mapProfileToHost(profile, fallbackHost: _host);
+        _isLoadingTalentProfile = false;
+      });
+    } on TalentPublicProfileException catch (error) {
+      if (!mounted) {
+        return;
+      }
+      setState(() => _isLoadingTalentProfile = false);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(error.message)),
+      );
+    } catch (error) {
+      if (!mounted) {
+        return;
+      }
+      setState(() => _isLoadingTalentProfile = false);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Gagal memuat profil talent: $error')),
+      );
+    }
+  }
+
+  DemoUserHost _mapProfileToHost(
+    TalentPublicProfileData profile, {
+    DemoUserHost? fallbackHost,
+  }) {
+    final description = profile.bio.trim().isNotEmpty
+        ? profile.bio.trim()
+        : fallbackHost?.description ?? 'Ready to connect';
+    final tierLabel = _tierLabel(profile.level);
+    final badges = _buildBadges(
+      tierLabel: tierLabel,
+      verificationStatus: profile.verificationStatus,
+      specialties: profile.specialties,
+      languages: profile.languages,
+    );
+    final portfolio = profile.portfolioUrls.isNotEmpty
+        ? profile.portfolioUrls
+        : fallbackHost?.portfolio ?? const [];
+    final location = [profile.city, profile.country]
+        .where((item) => item.trim().isNotEmpty)
+        .join(', ');
+    final servicePrices = profile.servicePrices.isNotEmpty
+        ? profile.servicePrices
+        : fallbackHost?.servicePrices ?? const {};
+
+    return DemoUserHost(
+      id: profile.accountId.hashCode,
+      accountId: profile.accountId,
+      name: profile.stageName.trim().isNotEmpty
+        ? profile.stageName.trim()
+        : profile.displayName,
+      age: profile.age,
+      city: profile.city,
+      countryCode: _countryCode(profile.country),
+      description: profile.specialties.isNotEmpty
+        ? profile.specialties.take(2).join(' • ')
+        : description,
+      imageUrl: profile.avatarUrl.isNotEmpty
+          ? profile.avatarUrl
+          : (fallbackHost?.imageUrl ?? ''),
+      pricePerMin: _priceForService('chat', servicePrices, tierLabel),
+      tierLabel: tierLabel,
+      rating: profile.rating,
+      reviewCount: profile.reviewCount,
+      badges: badges,
+      portfolio: portfolio,
+      isOnline: profile.isOnline,
+      location: location.isNotEmpty
+          ? location
+          : (fallbackHost?.location ?? 'Unknown location'),
+      biography: profile.bio.trim().isNotEmpty
+          ? profile.bio.trim()
+          : (fallbackHost?.biography ?? description),
+      languages: profile.languages,
+      specialties: profile.specialties,
+      servicePrices: servicePrices,
+    );
+  }
+
+  List<String> _buildBadges({
+    required String tierLabel,
+    required String verificationStatus,
+    required List<String> specialties,
+    required List<String> languages,
+  }) {
+    final badges = <String>[];
+    if (tierLabel.trim().isNotEmpty) {
+      badges.add(tierLabel);
+    }
+    if (verificationStatus.trim().isNotEmpty) {
+      badges.add(_capitalize(verificationStatus));
+    }
+    return badges.toSet().toList(growable: false);
+  }
+
+  String _capitalize(String value) {
+    if (value.isEmpty) {
+      return value;
+    }
+    return '${value[0].toUpperCase()}${value.substring(1)}';
+  }
+
+  String _tierLabel(String level) {
+    final normalized = level.trim();
+    if (normalized.isEmpty) {
+      return 'Basic';
+    }
+    return _capitalize(normalized);
+  }
+
+  String _countryCode(String country) {
+    const overrides = {
+      'indonesia': 'ID',
+      'philippines': 'PH',
+      'thailand': 'TH',
+      'vietnam': 'VN',
+      'japan': 'JP',
+      'united states': 'US',
+    };
+    final normalized = country.trim().toLowerCase();
+    final override = overrides[normalized];
+    if (override != null) {
+      return override;
+    }
+
+    final letters = normalized.replaceAll(RegExp(r'[^a-z]'), '');
+    if (letters.length >= 2) {
+      return letters.substring(0, 2).toUpperCase();
+    }
+    return 'ID';
+  }
+
+  int _priceForService(
+    String serviceType,
+    Map<String, int> prices,
+    String tierLabel,
+  ) {
+    final normalized = serviceType.trim().toLowerCase();
+    final exact = prices[normalized];
+    if (exact != null && exact > 0) {
+      return exact;
+    }
+
+    switch (normalized) {
+      case 'chat':
+        switch (tierLabel.toLowerCase()) {
+          case 'bronze':
+          case 'basic':
+            return 20;
+          case 'silver':
+            return 25;
+          case 'gold':
+            return 30;
+          case 'platinum':
+            return 35;
+          case 'diamond':
+            return 40;
+          default:
+            return 20;
+        }
+      case 'voice':
+        return (_priceForService('chat', prices, tierLabel) * 1.5).round();
+      case 'video':
+        return _priceForService('chat', prices, tierLabel) * 2;
+      case 'meet':
+        return (_priceForService('chat', prices, tierLabel) * 3).round();
+      default:
+        return 0;
+    }
+  }
+
+  String _formatCoinBalance(int value) {
+    final digits = value.abs().toString();
+    final buffer = StringBuffer();
+
+    for (var index = 0; index < digits.length; index += 1) {
+      final remaining = digits.length - index;
+      buffer.write(digits[index]);
+      if (remaining > 1 && remaining % 3 == 1) {
+        buffer.write(',');
+      }
+    }
+
+    final formatted = buffer.toString();
+    return value < 0 ? '-$formatted' : formatted;
+  }
 
   Future<void> _openPhotoGallery(int initialIndex) async {
     final pageController = PageController(initialPage: initialIndex);
@@ -112,17 +375,18 @@ class _ProfileScreenState extends State<ProfileScreen> {
   }
 
   Future<void> _showPaymentSheet(String type) async {
-    final multiplier = type == 'chat'
-        ? 1.0
-        : type == 'voice'
-        ? 1.5
-        : 2.0;
-    final hourlyRate = (host.pricePerMin * 60 * multiplier).round();
+    final servicePrice = _priceForService(
+      type,
+      host.servicePrices,
+      host.tierLabel,
+    );
     final title = type == 'chat'
         ? 'Start Chat'
         : type == 'voice'
         ? 'Start Voice Call'
-        : 'Start Video Call';
+        : type == 'video'
+        ? 'Start Video Call'
+        : 'Start Meet';
 
     await showModalBottomSheet<void>(
       context: context,
@@ -155,10 +419,12 @@ class _ProfileScreenState extends State<ProfileScreen> {
               const SizedBox(height: 8),
               Text(
                 type == 'chat'
-                    ? 'You will be charged per hour for chatting'
+                    ? 'You will be charged based on the talent chat tier pricing'
                     : type == 'voice'
-                    ? 'You will be charged per hour for voice calling'
-                    : 'You will be charged per hour for video calling',
+                    ? 'You will be charged based on the talent voice tier pricing'
+                    : type == 'video'
+                    ? 'You will be charged based on the talent video tier pricing'
+                    : 'You will be charged based on the talent meet tier pricing',
                 textAlign: TextAlign.center,
                 style: const TextStyle(color: Color(0xFF817A74)),
               ),
@@ -179,8 +445,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
                       style: TextStyle(color: Color(0xFF817A74)),
                     ),
                     const SizedBox(height: 4),
-                    const Text(
-                      '🪙 1,250',
+                    Text(
+                      '🪙 ${_formatCoinBalance(_currentBalance)}',
                       style: TextStyle(
                         fontSize: 26,
                         fontWeight: FontWeight.w700,
@@ -188,7 +454,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     ),
                     const SizedBox(height: 12),
                     Text(
-                      'Rate: 🪙 $hourlyRate / hour',
+                      'Rate: 🪙 $servicePrice',
                       style: const TextStyle(
                         fontWeight: FontWeight.w700,
                         color: userAmberDark,
@@ -204,11 +470,18 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   onPressed: () {
                     Navigator.pop(context);
                     if (type == 'chat') {
-                      Navigator.pushNamed(context, '/chat');
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute<void>(
+                          builder: (context) => ChatScreen(host: host),
+                        ),
+                      );
                     } else {
                       ScaffoldMessenger.of(context).showSnackBar(
                         SnackBar(
-                          content: Text('$title started with ${host.name}'),
+                          content: Text(
+                            '$title started with ${host.name} (${type.toLowerCase()})',
+                          ),
                         ),
                       );
                     }
@@ -232,6 +505,17 @@ class _ProfileScreenState extends State<ProfileScreen> {
   }
 
   Future<void> _handleMeet() async {
+    if (_isMeetLocked) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+            'Fitur meet ditutup untuk talent Bronze. Talent harus naik ke tier Silver agar fitur meet bisa diakses.',
+          ),
+        ),
+      );
+      return;
+    }
+
     final request = await showModalBottomSheet<DemoMeetRequest>(
       context: context,
       isScrollControlled: true,
@@ -317,14 +601,18 @@ class _ProfileScreenState extends State<ProfileScreen> {
                             width: 42,
                             height: 42,
                             decoration: BoxDecoration(
-                              color: const Color(0xFF2FA655),
+                              color: host.isOnline
+                                  ? const Color(0xFF2FA655)
+                                  : const Color(0xFF8C857E),
                               borderRadius: BorderRadius.circular(999),
                             ),
-                            child: const Center(
+                            child: Center(
                               child: Icon(
                                 Icons.circle,
                                 size: 14,
-                                color: Colors.white,
+                                color: host.isOnline
+                                    ? Colors.white
+                                    : const Color(0xFFE7E0D7),
                               ),
                             ),
                           ),
@@ -340,8 +628,13 @@ class _ProfileScreenState extends State<ProfileScreen> {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         const SizedBox(height: 160),
+                        if (_isLoadingTalentProfile)
+                          const Padding(
+                            padding: EdgeInsets.only(bottom: 16),
+                            child: LinearProgressIndicator(minHeight: 3),
+                          ),
                         Text(
-                          '${host.name}, ${host.age}',
+                          host.age > 0 ? '${host.name}, ${host.age}' : host.name,
                           style: const TextStyle(
                             color: Colors.white,
                             fontSize: 40,
@@ -357,6 +650,42 @@ class _ProfileScreenState extends State<ProfileScreen> {
                           ),
                         ),
                         const SizedBox(height: 16),
+                        if (host.languages.isNotEmpty) ...[
+                          const Text(
+                            'Languages',
+                            style: TextStyle(
+                              color: Colors.white,
+                              fontWeight: FontWeight.w700,
+                            ),
+                          ),
+                          const SizedBox(height: 8),
+                          Wrap(
+                            spacing: 8,
+                            runSpacing: 8,
+                            children: host.languages
+                                .map(
+                                  (language) => Container(
+                                    padding: const EdgeInsets.symmetric(
+                                      horizontal: 12,
+                                      vertical: 8,
+                                    ),
+                                    decoration: BoxDecoration(
+                                      color: Colors.white.withValues(alpha: 0.12),
+                                      borderRadius: BorderRadius.circular(999),
+                                      border: Border.all(
+                                        color: Colors.white.withValues(alpha: 0.14),
+                                      ),
+                                    ),
+                                    child: Text(
+                                      language,
+                                      style: const TextStyle(color: Colors.white),
+                                    ),
+                                  ),
+                                )
+                                .toList(),
+                          ),
+                          const SizedBox(height: 16),
+                        ],
                         Wrap(
                           spacing: 8,
                           runSpacing: 8,
@@ -379,6 +708,42 @@ class _ProfileScreenState extends State<ProfileScreen> {
                               )
                               .toList(),
                         ),
+                        if (host.biography.trim().isNotEmpty) ...[
+                          const SizedBox(height: 18),
+                          Container(
+                            width: double.infinity,
+                            padding: const EdgeInsets.all(16),
+                            decoration: BoxDecoration(
+                              color: Colors.white.withValues(alpha: 0.12),
+                              borderRadius: BorderRadius.circular(24),
+                              border: Border.all(
+                                color: Colors.white.withValues(alpha: 0.10),
+                              ),
+                            ),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                const Text(
+                                  'Biography',
+                                  style: TextStyle(
+                                    color: Colors.white,
+                                    fontWeight: FontWeight.w700,
+                                    fontSize: 16,
+                                  ),
+                                ),
+                                const SizedBox(height: 10),
+                                Text(
+                                  host.biography,
+                                  style: const TextStyle(
+                                    color: Colors.white70,
+                                    fontSize: 15,
+                                    height: 1.6,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
                         const SizedBox(height: 18),
                         SizedBox(
                           width: double.infinity,
@@ -393,7 +758,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                               ),
                             ),
                             child: Text(
-                              'Chat Now 🪙 ${host.pricePerMin} / Min →',
+                              'Chat Now • 🪙 ${_priceForService('chat', host.servicePrices, host.tierLabel)} / hour',
                               style: const TextStyle(
                                 fontSize: 16,
                                 fontWeight: FontWeight.w700,
@@ -491,34 +856,49 @@ class _ProfileScreenState extends State<ProfileScreen> {
                         const SizedBox(height: 18),
                         Row(
                           children: [
-                            Expanded(
-                              child: _actionCard(
-                                Icons.call_rounded,
-                                'Voice',
-                                'Talk live by voice',
-                                const Color(0xFF31B56A),
-                                () => _showPaymentSheet('voice'),
+                            Flexible(
+                              child: AspectRatio(
+                                aspectRatio: 0.78,
+                                child: _actionCard(
+                                  Icons.call_rounded,
+                                  'Voice',
+                                  '🪙 ${_priceForService('voice', host.servicePrices, host.tierLabel)} / hour',
+                                  const Color(0xFF31B56A),
+                                  () => _showPaymentSheet('voice'),
+                                ),
                               ),
                             ),
                             const SizedBox(width: 12),
-                            Expanded(
-                              child: _actionCard(
-                                Icons.videocam_rounded,
-                                'Video',
-                                'Start face-to-face call',
-                                const Color(0xFF7A5AF8),
-                                () => _showPaymentSheet('video'),
+                            Flexible(
+                              child: AspectRatio(
+                                aspectRatio: 0.78,
+                                child: _actionCard(
+                                  Icons.videocam_rounded,
+                                  'Video',
+                                  '🪙 ${_priceForService('video', host.servicePrices, host.tierLabel)} / hour',
+                                  const Color(0xFF7A5AF8),
+                                  () => _showPaymentSheet('video'),
+                                ),
                               ),
                             ),
                             const SizedBox(width: 12),
-                            Expanded(
-                              child: _actionCard(
-                                Icons.location_on_rounded,
-                                'Meet',
-                                'Preview offline request',
-                                const Color(0xFFCA6C34),
-                                _handleMeet,
-                                showWarning: !idVerified || !selfieVerified,
+                            Flexible(
+                              child: AspectRatio(
+                                aspectRatio: 0.78,
+                                child: _actionCard(
+                                  Icons.location_on_rounded,
+                                  'Meet',
+                                  _isMeetLocked
+                                      ? 'Silver tier only'
+                                      : '🪙 ${_priceForService('meet', host.servicePrices, host.tierLabel)} / hour',
+                                  const Color(0xFFCA6C34),
+                                  _handleMeet,
+                                  showWarning:
+                                      _isMeetLocked ||
+                                      !idVerified ||
+                                      !selfieVerified,
+                                  disabled: _isMeetLocked,
+                                ),
                               ),
                             ),
                           ],
@@ -651,58 +1031,68 @@ class _ProfileScreenState extends State<ProfileScreen> {
     Color accentColor,
     VoidCallback onTap, {
     bool showWarning = false,
+    bool disabled = false,
   }) {
     return InkWell(
-      onTap: onTap,
+      onTap: disabled ? null : onTap,
       borderRadius: BorderRadius.circular(18),
       child: Stack(
         clipBehavior: Clip.none,
         children: [
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 16),
-            decoration: BoxDecoration(
-              gradient: LinearGradient(
-                colors: [
-                  accentColor.withValues(alpha: 0.30),
-                  Colors.white.withValues(alpha: 0.10),
-                ],
-                begin: Alignment.topCenter,
-                end: Alignment.bottomCenter,
+          Opacity(
+            opacity: disabled ? 0.45 : 1,
+            child: SizedBox(
+              height: 184,
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 16),
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    colors: [
+                      accentColor.withValues(alpha: 0.30),
+                      Colors.white.withValues(alpha: 0.10),
+                    ],
+                    begin: Alignment.topCenter,
+                    end: Alignment.bottomCenter,
+                  ),
+                  borderRadius: BorderRadius.circular(18),
+                  border: Border.all(color: Colors.white.withValues(alpha: 0.18)),
+                ),
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Container(
+                      width: 42,
+                      height: 42,
+                      decoration: BoxDecoration(
+                        color: Colors.white.withValues(alpha: 0.14),
+                        borderRadius: BorderRadius.circular(14),
+                      ),
+                      child: Icon(icon, color: Colors.white),
+                    ),
+                    const SizedBox(height: 10),
+                    Text(
+                      label,
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 14,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                    const SizedBox(height: 6),
+                    Text(
+                      subtitle,
+                      textAlign: TextAlign.center,
+                      maxLines: 3,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                        color: Colors.white70,
+                        fontSize: 11,
+                        height: 1.3,
+                      ),
+                    ),
+                  ],
+                ),
               ),
-              borderRadius: BorderRadius.circular(18),
-              border: Border.all(color: Colors.white.withValues(alpha: 0.18)),
-            ),
-            child: Column(
-              children: [
-                Container(
-                  width: 42,
-                  height: 42,
-                  decoration: BoxDecoration(
-                    color: Colors.white.withValues(alpha: 0.14),
-                    borderRadius: BorderRadius.circular(14),
-                  ),
-                  child: Icon(icon, color: Colors.white),
-                ),
-                const SizedBox(height: 10),
-                Text(
-                  label,
-                  style: const TextStyle(
-                    color: Colors.white,
-                    fontSize: 14,
-                    fontWeight: FontWeight.w700,
-                  ),
-                ),
-                const SizedBox(height: 4),
-                Text(
-                  subtitle,
-                  textAlign: TextAlign.center,
-                  style: const TextStyle(
-                    color: Colors.white70,
-                    fontSize: 11,
-                    height: 1.3,
-                  ),
-                ),
-              ],
             ),
           ),
           if (showWarning)

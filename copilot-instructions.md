@@ -3,6 +3,7 @@
 Sebelum membuat perubahan apa pun di repo ini, baca terlebih dahulu:
 - `BACKEND_UI_SCREEN_CONTRACT.md`
 - `FRONTEND_UI_DEVELOPMENT_GUARDRAILS.md`
+- `FINANCIAL_LEDGER_ARCHITECTURE.md`
 
 ## Tujuan
 
@@ -20,6 +21,8 @@ Instruksi ini dibuat agar Copilot atau agent lain yang membantu di repo ini tida
 4. Jangan memaksa frontend mengikuti bentuk backend yang belum sesuai. Backend harus mengikuti kontrak UI yang sudah ada.
 5. Jangan satukan flow user dan talent jika dari desain atau screen memang berbeda.
 6. Jangan menghapus status atau rule bisnis yang sudah dipakai lintas screen.
+7. Jangan memetakan `admin` sebagai `user` atau `talent` hanya untuk menyesuaikan UI yang ada.
+8. Perlakukan `agency` sebagai platform terpisah jika tugas menyangkut auth atau backend contract, kecuali user secara eksplisit meminta membangun UI agency di repo ini.
 
 ## Status dan Rule Bisnis yang Harus Dipertahankan
 
@@ -37,6 +40,7 @@ Rule penting yang harus tetap dijaga:
 - review hanya muncul untuk transaksi yang siap direview
 - withdraw talent harus masuk ke payment history dan memengaruhi balance
 - route user dan talent tidak boleh tertukar
+- backend boleh multi-role dan multi-surface, tetapi app Flutter aktif saat ini tetap fokus pada segment `user` dan `talent`
 
 ## Prioritas Saat Diminta Melakukan Perubahan
 
@@ -53,6 +57,17 @@ Jika tugasnya menghubungkan backend:
 - ganti dummy data dengan data backend,
 - tambahkan loading, empty, error state bila perlu,
 - pertahankan nama section, label penting, dan flow page.
+
+Jika tugasnya menyentuh auth atau database contract:
+- auth boleh terpusat dalam satu sistem account/login,
+- tetapi informasi `user`, `talent`, dan `agency` tidak boleh digabung ke satu tabel profil campuran,
+- pertahankan pemisahan tabel informasi per domain role agar struktur data tetap terbaca oleh tim internal.
+
+Jika tugasnya menyentuh wallet, transaksi, payout, atau fee:
+- jangan campur wallet user dan wallet talent dalam satu saldo domain yang sama,
+- gunakan ledger debit atau credit yang eksplisit,
+- simpan snapshot rate, gross amount, fee amount, dan net amount untuk transaksi finansial penting,
+- jangan mengandalkan satu rule global yang dihitung ulang saat membaca histori lama.
 
 ## Saat Mengerjakan Frontend Feature
 

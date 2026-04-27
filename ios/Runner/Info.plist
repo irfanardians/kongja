@@ -26,6 +26,14 @@
 	<string>$(FLUTTER_BUILD_NUMBER)</string>
 	<key>LSRequiresIPhoneOS</key>
 	<true/>
+	<key>NSCameraUsageDescription</key>
+	<string>Kongja membutuhkan akses kamera untuk mengambil foto profil Anda.</string>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>Kongja membutuhkan akses mikrofon untuk mendukung panggilan suara dan video.</string>
+	<key>NSPhotoLibraryAddUsageDescription</key>
+	<string>Kongja membutuhkan izin untuk menyimpan hasil foto profil bila diperlukan oleh sistem.</string>
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>Kongja membutuhkan akses galeri untuk memilih foto profil dari perangkat Anda.</string>
 	<key>UIApplicationSceneManifest</key>
 	<dict>
 		<key>UIApplicationSupportsMultipleScenes</key>

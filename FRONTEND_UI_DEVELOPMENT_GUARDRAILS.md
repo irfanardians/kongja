@@ -53,6 +53,11 @@ Sebelum memberi instruksi ke Copilot atau mengubah frontend secara manual, baca 
 - Register user dan register talent tidak boleh disatukan secara sembarangan.
 - Activity user dan talent boleh mirip, tapi tetap mengikuti peran masing-masing.
 
+Catatan multi-role:
+- `admin` bukan turunan UI dari `user` atau `talent` di app Flutter ini
+- `agency` diarahkan sebagai platform terpisah walaupun tetap satu backend dan satu domain autentikasi
+- jangan menambah screen agency ke app ini tanpa instruksi produk yang jelas
+
 4. Pertahankan status bisnis yang sudah dipakai UI
 - `pending`
 - `accepted`
@@ -190,6 +195,8 @@ Pastikan hal ini tetap benar:
 - label tab dan menu masih konsisten
 - status bisnis masih sama
 - flow user dan talent tidak tertukar
+- role `admin` tidak dipaksakan menjadi flow `user` atau `talent`
+- `agency` tidak disisipkan ke mobile app ini jika memang arahnya platform terpisah
 - komponen schedule, review, withdraw, activity tetap berjalan sesuai tujuan awal
 - perubahan tidak merusak screen lain yang sudah stabil
 - jika contract berubah, dokumentasi ikut diupdate

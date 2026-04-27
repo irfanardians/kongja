@@ -9,14 +9,25 @@
 //
 // Komponen reusable dibuat di folder components terpisah.
 
-import 'package:flutter/material.dart';
+import 'dart:io' show Platform;
 
+import 'package:flutter/foundation.dart';
+import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import 'package:image_picker/image_picker.dart';
+
+import '../../core/services/auth_service.dart';
+import '../../core/services/user_profile_service.dart';
+import '../../core/services/user_wallet_service.dart';
 import '../../shared/demo_schedule_store.dart';
+import '../shared/loading_splash.dart';
 import '../shared/review_composer_sheet.dart';
 import 'user_ui_shared.dart';
 
 class UserProfileScreen extends StatefulWidget {
-  const UserProfileScreen({Key? key}) : super(key: key);
+  const UserProfileScreen({super.key, this.showBottomNav = true});
+
+  final bool showBottomNav;
 
   @override
   State<UserProfileScreen> createState() => _UserProfileScreenState();
@@ -79,12 +90,309 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
   ];
 
   late List<_ReadyToReviewTalent> _readyToReviewTalents;
+  final ImagePicker _imagePicker = ImagePicker();
+  UserProfileData? _profile;
+  bool _isLoadingProfile = false;
+  int _availableCoinBalance = 0;
 
   @override
   void initState() {
     super.initState();
     _readyToReviewTalents = List<_ReadyToReviewTalent>.from(
       _seedReadyToReviewTalents,
+    );
+    final cachedBalance = UserWalletService.peekCachedAvailableCoinBalance();
+    if (cachedBalance != null) {
+      _availableCoinBalance = cachedBalance;
+    }
+    _loadProfile();
+    _loadWalletBalance();
+  }
+
+  Future<void> _loadProfile({bool forceRefresh = false}) async {
+    if (_profile == null) {
+      setState(() {
+        _isLoadingProfile = true;
+      });
+    }
+
+    try {
+      final profile = await UserProfileService.getMyProfile(
+        forceRefresh: forceRefresh,
+      );
+      if (!mounted) {
+        return;
+      }
+
+      setState(() {
+        _profile = profile;
+        _isLoadingProfile = false;
+      });
+    } catch (_) {
+      if (!mounted) {
+        return;
+      }
+
+      setState(() {
+        _isLoadingProfile = false;
+      });
+    }
+  }
+
+  Future<void> _loadWalletBalance({bool forceRefresh = false}) async {
+    try {
+      final balance = await UserWalletService.getAvailableCoinBalance(
+        forceRefresh: forceRefresh,
+      );
+
+      if (!mounted) {
+        return;
+      }
+
+      setState(() {
+        _availableCoinBalance = balance;
+      });
+    } catch (_) {
+      if (!mounted) {
+        return;
+      }
+    }
+  }
+
+  Future<void> _editProfilePhoto() async {
+    final overlayController = AppLoadingOverlay.of(context);
+    final scaffoldMessenger = ScaffoldMessenger.of(context);
+    final showCameraOption = _supportsCameraOption();
+
+    final source = await showModalBottomSheet<ImageSource>(
+      context: context,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      ),
+      builder: (context) {
+        return SafeArea(
+          top: false,
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(20, 20, 20, 28),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                if (showCameraOption)
+                  ListTile(
+                    contentPadding: EdgeInsets.zero,
+                    leading: const CircleAvatar(
+                      backgroundColor: Color(0xFFFFF1E3),
+                      child: Icon(Icons.photo_camera_rounded),
+                    ),
+                    title: const Text('Open Camera'),
+                    subtitle: const Text('Take a new profile photo'),
+                    onTap: () => Navigator.pop(context, ImageSource.camera),
+                  )
+                else
+                  const ListTile(
+                    contentPadding: EdgeInsets.zero,
+                    leading: CircleAvatar(
+                      backgroundColor: Color(0xFFF2ECE4),
+                      child: Icon(
+                        Icons.photo_camera_rounded,
+                        color: Color(0xFF9A8F82),
+                      ),
+                    ),
+                    title: Text('Open Camera'),
+                    subtitle: Text(
+                      'Sementara hanya tersedia di Android atau perangkat fisik yang sudah diverifikasi.',
+                    ),
+                  ),
+                ListTile(
+                  contentPadding: EdgeInsets.zero,
+                  leading: const CircleAvatar(
+                    backgroundColor: Color(0xFFFFF1E3),
+                    child: Icon(Icons.photo_library_rounded),
+                  ),
+                  title: const Text('Get from Device'),
+                  subtitle: const Text('Choose a photo from your device'),
+                  onTap: () => Navigator.pop(context, ImageSource.gallery),
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+
+    if (source == null) {
+      return;
+    }
+
+    XFile? pickedFile;
+    try {
+      pickedFile = await _imagePicker.pickImage(
+        source: source,
+        imageQuality: 88,
+      );
+    } on PlatformException catch (error) {
+      if (!mounted) {
+        return;
+      }
+      scaffoldMessenger.showSnackBar(
+        SnackBar(
+          content: Text(
+            error.message ?? 'Akses kamera atau galeri tidak tersedia.',
+          ),
+        ),
+      );
+      return;
+    } catch (_) {
+      if (!mounted) {
+        return;
+      }
+      scaffoldMessenger.showSnackBar(
+        const SnackBar(
+          content: Text('Gagal membuka kamera atau galeri di perangkat ini.'),
+        ),
+      );
+      return;
+    }
+
+    if (pickedFile == null || !mounted) {
+      return;
+    }
+
+    final selectedFile = pickedFile;
+
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) {
+        return AlertDialog(
+          title: const Text('Confirm Photo Upload'),
+          content: const Text('Gunakan foto ini sebagai foto profil Anda?'),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(dialogContext).pop(false),
+              child: const Text('Cancel'),
+            ),
+            TextButton(
+              onPressed: () => Navigator.of(dialogContext).pop(true),
+              child: const Text('Confirm'),
+            ),
+          ],
+        );
+      },
+    );
+
+    if (confirmed != true) {
+      return;
+    }
+
+    try {
+      final updatedProfile = await overlayController.run(
+        () => UserProfileService.uploadAvatar(selectedFile.path),
+        message: 'Mengunggah foto profil...',
+      );
+
+      if (!mounted) {
+        return;
+      }
+
+      setState(() {
+        _profile = updatedProfile;
+      });
+
+      scaffoldMessenger.showSnackBar(
+        const SnackBar(content: Text('Foto profil berhasil diperbarui.')),
+      );
+    } on AuthServiceException catch (error) {
+      if (!mounted) {
+        return;
+      }
+      scaffoldMessenger.showSnackBar(SnackBar(content: Text(error.message)));
+    } catch (_) {
+      if (!mounted) {
+        return;
+      }
+      scaffoldMessenger.showSnackBar(
+        const SnackBar(
+          content: Text('Gagal mengunggah foto profil. Coba lagi.'),
+        ),
+      );
+    }
+  }
+
+  bool _supportsCameraOption() {
+    if (kIsWeb) {
+      return false;
+    }
+
+    if (Platform.isAndroid || Platform.isIOS) {
+      return true;
+    }
+
+    return false;
+  }
+
+  Future<void> _openProfilePhotoPreview({required String displayName}) async {
+    await showDialog<void>(
+      context: context,
+      barrierDismissible: true,
+      barrierColor: Colors.black.withValues(alpha: 0.92),
+      builder: (dialogContext) {
+        return Dialog.fullscreen(
+          backgroundColor: Colors.black,
+          child: SafeArea(
+            child: Stack(
+              children: [
+                Center(
+                  child: InteractiveViewer(
+                    minScale: 1,
+                    maxScale: 4,
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 24),
+                      child: _ProfilePhotoFullscreenImage(
+                        imageUrl: _profile?.avatarUrl,
+                        displayName: displayName,
+                        isLoading: _isLoadingProfile,
+                      ),
+                    ),
+                  ),
+                ),
+                Positioned(
+                  top: 12,
+                  left: 12,
+                  child: IconButton(
+                    onPressed: () => Navigator.of(dialogContext).pop(),
+                    icon: const Icon(
+                      Icons.close_rounded,
+                      color: Colors.white,
+                      size: 30,
+                    ),
+                  ),
+                ),
+                Positioned(
+                  right: 24,
+                  bottom: 28,
+                  left: 24,
+                  child: FilledButton.icon(
+                    onPressed: () async {
+                      Navigator.of(dialogContext).pop();
+                      await _editProfilePhoto();
+                    },
+                    icon: const Icon(Icons.photo_camera_back_rounded),
+                    label: const Text('Change Photo'),
+                    style: FilledButton.styleFrom(
+                      backgroundColor: userAmberDark,
+                      foregroundColor: Colors.white,
+                      minimumSize: const Size.fromHeight(54),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(18),
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        );
+      },
     );
   }
 
@@ -275,9 +583,18 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final profile = _profile;
+    final displayName = profile?.displayName ?? 'Alex Johnson';
+    final locationLabel = profile?.locationLabel.isNotEmpty == true
+        ? profile!.locationLabel
+        : 'Profile data loading...';
+    final countryCode = _countryCode(profile?.country ?? 'US');
+
     return Scaffold(
       backgroundColor: userCreamBackground,
-      bottomNavigationBar: const UserBottomNav(currentRoute: '/user-profile'),
+      bottomNavigationBar: widget.showBottomNav
+          ? const UserBottomNav(currentRoute: '/user-profile')
+          : null,
       body: SafeArea(
         bottom: false,
         child: SingleChildScrollView(
@@ -342,35 +659,50 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
                               children: [
                                 Stack(
                                   children: [
-                                    const CircleAvatar(
-                                      radius: 40,
-                                      backgroundImage: NetworkImage(
-                                        'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=200',
+                                    InkWell(
+                                      onTap: () => _openProfilePhotoPreview(
+                                        displayName: displayName,
+                                      ),
+                                      borderRadius: BorderRadius.circular(999),
+                                      child: _UserProfileAvatar(
+                                        radius: 40,
+                                        imageUrl: profile?.avatarUrl,
+                                        isLoading: _isLoadingProfile,
+                                        initials: displayName,
                                       ),
                                     ),
-                                    const Positioned(
-                                      right: 2,
-                                      top: 2,
-                                      child: UserFlagBadge(countryCode: 'US'),
+                                    Positioned(
+                                      right: -4,
+                                      top: -4,
+                                      child: UserFlagBadge(
+                                        countryCode: countryCode,
+                                        size: 28,
+                                        borderWidth: 2,
+                                        innerPadding: 3,
+                                      ),
                                     ),
                                     Positioned(
                                       right: 0,
                                       bottom: 0,
-                                      child: Container(
-                                        width: 28,
-                                        height: 28,
-                                        decoration: BoxDecoration(
-                                          color: userAmberDark,
-                                          shape: BoxShape.circle,
-                                          border: Border.all(
-                                            color: Colors.white,
-                                            width: 2,
+                                      child: InkWell(
+                                        onTap: _editProfilePhoto,
+                                        borderRadius: BorderRadius.circular(20),
+                                        child: Container(
+                                          width: 28,
+                                          height: 28,
+                                          decoration: BoxDecoration(
+                                            color: userAmberDark,
+                                            shape: BoxShape.circle,
+                                            border: Border.all(
+                                              color: Colors.white,
+                                              width: 2,
+                                            ),
                                           ),
-                                        ),
-                                        child: const Icon(
-                                          Icons.edit,
-                                          size: 14,
-                                          color: Colors.white,
+                                          child: const Icon(
+                                            Icons.edit,
+                                            size: 14,
+                                            color: Colors.white,
+                                          ),
                                         ),
                                       ),
                                     ),
@@ -382,17 +714,17 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
                                     crossAxisAlignment:
                                         CrossAxisAlignment.start,
                                     children: [
-                                      const Text(
-                                        'Alex Johnson',
+                                      Text(
+                                        displayName,
                                         style: TextStyle(
                                           fontSize: 22,
                                           fontWeight: FontWeight.w700,
                                         ),
                                       ),
                                       const SizedBox(height: 4),
-                                      const Text(
-                                        'alex.johnson@email.com',
-                                        style: TextStyle(
+                                      Text(
+                                        locationLabel,
+                                        style: const TextStyle(
                                           color: Color(0xFF86807B),
                                           fontSize: 14,
                                         ),
@@ -454,22 +786,22 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
                                     ),
                                   ),
                                   const SizedBox(width: 12),
-                                  const Expanded(
+                                  Expanded(
                                     child: Column(
                                       crossAxisAlignment:
                                           CrossAxisAlignment.start,
                                       children: [
-                                        Text(
+                                        const Text(
                                           'Coin Balance',
                                           style: TextStyle(
                                             fontSize: 13,
                                             color: Color(0xFF7B746E),
                                           ),
                                         ),
-                                        SizedBox(height: 2),
+                                        const SizedBox(height: 2),
                                         Text(
-                                          '🪙 1,250',
-                                          style: TextStyle(
+                                          '🪙 ${_formatCoinBalance(_availableCoinBalance)}',
+                                          style: const TextStyle(
                                             fontSize: 22,
                                             fontWeight: FontWeight.w700,
                                           ),
@@ -496,12 +828,14 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
                       const SizedBox(height: 8),
                       ValueListenableBuilder<List<DemoMeetRequest>>(
                         valueListenable: demoScheduleStore,
-                        builder: (context, _, __) {
-                          final userSchedules = demoScheduleStore
-                              .requestsForUser(demoCurrentUserName)
-                            ..sort(
-                              (left, right) => right.date.compareTo(left.date),
-                            );
+                        builder: (context, value, child) {
+                          final userSchedules =
+                              demoScheduleStore.requestsForUser(
+                                demoCurrentUserName,
+                              )..sort(
+                                (left, right) =>
+                                    right.date.compareTo(left.date),
+                              );
 
                           return Container(
                             width: double.infinity,
@@ -539,61 +873,70 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
                                     ),
                                     child: const Text(
                                       'Belum ada schedule yang diajukan.',
-                                      style: TextStyle(color: Color(0xFF6A625B)),
+                                      style: TextStyle(
+                                        color: Color(0xFF6A625B),
+                                      ),
                                     ),
                                   )
                                 else
-                                  ...userSchedules.take(3).map(
-                                    (request) => Container(
-                                      margin: const EdgeInsets.only(bottom: 12),
-                                      padding: const EdgeInsets.all(14),
-                                      decoration: BoxDecoration(
-                                        color: const Color(0xFFFFFBF7),
-                                        borderRadius: BorderRadius.circular(18),
-                                        border: Border.all(
-                                          color: const Color(0xFFF0E6DA),
-                                        ),
-                                      ),
-                                      child: Column(
-                                        crossAxisAlignment:
-                                            CrossAxisAlignment.start,
-                                        children: [
-                                          Row(
+                                  ...userSchedules
+                                      .take(3)
+                                      .map(
+                                        (request) => Container(
+                                          margin: const EdgeInsets.only(
+                                            bottom: 12,
+                                          ),
+                                          padding: const EdgeInsets.all(14),
+                                          decoration: BoxDecoration(
+                                            color: const Color(0xFFFFFBF7),
+                                            borderRadius: BorderRadius.circular(
+                                              18,
+                                            ),
+                                            border: Border.all(
+                                              color: const Color(0xFFF0E6DA),
+                                            ),
+                                          ),
+                                          child: Column(
+                                            crossAxisAlignment:
+                                                CrossAxisAlignment.start,
                                             children: [
-                                              Expanded(
-                                                child: Text(
-                                                  request.hostName,
-                                                  style: const TextStyle(
-                                                    fontWeight: FontWeight.w700,
-                                                    fontSize: 15,
+                                              Row(
+                                                children: [
+                                                  Expanded(
+                                                    child: Text(
+                                                      request.hostName,
+                                                      style: const TextStyle(
+                                                        fontWeight:
+                                                            FontWeight.w700,
+                                                        fontSize: 15,
+                                                      ),
+                                                    ),
                                                   ),
+                                                  _scheduleStatusBadge(
+                                                    request.status,
+                                                  ),
+                                                ],
+                                              ),
+                                              const SizedBox(height: 6),
+                                              Text(
+                                                '${request.eventType} • ${request.dateLabel} • ${request.startTimeLabel}',
+                                                style: const TextStyle(
+                                                  color: Color(0xFF665E58),
+                                                  fontSize: 13,
                                                 ),
                                               ),
-                                              _scheduleStatusBadge(
-                                                request.status,
+                                              const SizedBox(height: 6),
+                                              Text(
+                                                request.statusDescription,
+                                                style: const TextStyle(
+                                                  color: Color(0xFF8D8781),
+                                                  fontSize: 12,
+                                                ),
                                               ),
                                             ],
                                           ),
-                                          const SizedBox(height: 6),
-                                          Text(
-                                            '${request.eventType} • ${request.dateLabel} • ${request.startTimeLabel}',
-                                            style: const TextStyle(
-                                              color: Color(0xFF665E58),
-                                              fontSize: 13,
-                                            ),
-                                          ),
-                                          const SizedBox(height: 6),
-                                          Text(
-                                            request.statusDescription,
-                                            style: const TextStyle(
-                                              color: Color(0xFF8D8781),
-                                              fontSize: 12,
-                                            ),
-                                          ),
-                                        ],
+                                        ),
                                       ),
-                                    ),
-                                  ),
                               ],
                             ),
                           );
@@ -897,6 +1240,175 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
       ),
     );
   }
+
+  String _countryCode(String country) {
+    final normalized = country.trim().toLowerCase();
+    const overrides = {
+      'indonesia': 'ID',
+      'united states': 'US',
+      'philippines': 'PH',
+      'thailand': 'TH',
+      'vietnam': 'VN',
+      'japan': 'JP',
+    };
+
+    final override = overrides[normalized];
+    if (override != null) {
+      return override;
+    }
+
+    final letters = normalized.replaceAll(RegExp(r'[^a-z]'), '');
+    if (letters.length >= 2) {
+      return letters.substring(0, 2).toUpperCase();
+    }
+
+    return 'US';
+  }
+
+  String _formatCoinBalance(int value) {
+    final digits = value.abs().toString();
+    final buffer = StringBuffer();
+
+    for (var index = 0; index < digits.length; index += 1) {
+      final remaining = digits.length - index;
+      buffer.write(digits[index]);
+      if (remaining > 1 && remaining % 3 == 1) {
+        buffer.write(',');
+      }
+    }
+
+    final formatted = buffer.toString();
+    return value < 0 ? '-$formatted' : formatted;
+  }
+}
+
+class _UserProfileAvatar extends StatelessWidget {
+  const _UserProfileAvatar({
+    required this.radius,
+    required this.imageUrl,
+    required this.isLoading,
+    required this.initials,
+  });
+
+  final double radius;
+  final String? imageUrl;
+  final bool isLoading;
+  final String initials;
+
+  @override
+  Widget build(BuildContext context) {
+    final trimmedUrl = imageUrl?.trim() ?? '';
+    if (trimmedUrl.isNotEmpty) {
+      return CircleAvatar(
+        radius: radius,
+        backgroundImage: NetworkImage(trimmedUrl),
+      );
+    }
+
+    final label = initials.trim().isEmpty
+        ? 'U'
+        : initials.trim().substring(0, 1).toUpperCase();
+
+    return CircleAvatar(
+      radius: radius,
+      backgroundColor: const Color(0xFFFFECDD),
+      child: isLoading
+          ? const SizedBox(
+              width: 24,
+              height: 24,
+              child: CircularProgressIndicator(strokeWidth: 2),
+            )
+          : Text(
+              label,
+              style: const TextStyle(
+                fontSize: 28,
+                fontWeight: FontWeight.w700,
+                color: Color(0xFF8B5A3C),
+              ),
+            ),
+    );
+  }
+}
+
+class _ProfilePhotoFullscreenImage extends StatelessWidget {
+  const _ProfilePhotoFullscreenImage({
+    required this.imageUrl,
+    required this.displayName,
+    required this.isLoading,
+  });
+
+  final String? imageUrl;
+  final String displayName;
+  final bool isLoading;
+
+  @override
+  Widget build(BuildContext context) {
+    final trimmedUrl = imageUrl?.trim() ?? '';
+    if (trimmedUrl.isNotEmpty) {
+      return ClipRRect(
+        borderRadius: BorderRadius.circular(28),
+        child: Image.network(
+          trimmedUrl,
+          fit: BoxFit.contain,
+          errorBuilder: (context, error, stackTrace) {
+            return _FullscreenAvatarFallback(
+              displayName: displayName,
+              isLoading: isLoading,
+            );
+          },
+        ),
+      );
+    }
+
+    return _FullscreenAvatarFallback(
+      displayName: displayName,
+      isLoading: isLoading,
+    );
+  }
+}
+
+class _FullscreenAvatarFallback extends StatelessWidget {
+  const _FullscreenAvatarFallback({
+    required this.displayName,
+    required this.isLoading,
+  });
+
+  final String displayName;
+  final bool isLoading;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: 260,
+      height: 260,
+      decoration: BoxDecoration(
+        color: const Color(0xFFFFECDD),
+        shape: BoxShape.circle,
+        border: Border.all(color: Colors.white24, width: 2),
+      ),
+      child: Center(
+        child: isLoading
+            ? const SizedBox(
+                width: 36,
+                height: 36,
+                child: CircularProgressIndicator(
+                  strokeWidth: 2.5,
+                  color: Colors.white,
+                ),
+              )
+            : Text(
+                displayName.trim().isEmpty
+                    ? 'U'
+                    : displayName.trim().substring(0, 1).toUpperCase(),
+                style: const TextStyle(
+                  fontSize: 88,
+                  fontWeight: FontWeight.w700,
+                  color: Color(0xFF8B5A3C),
+                ),
+              ),
+      ),
+    );
+  }
 }
 
 class _ReadyToReviewTalent {
@@ -957,17 +1469,20 @@ class _ReadyToReviewTalentSheet extends StatelessWidget {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: const [
                         Text(
-                          'Ready to Review Talent',
+                          'Ready To Review',
                           style: TextStyle(
                             fontSize: 24,
                             fontWeight: FontWeight.w800,
                             color: Color(0xFF241B15),
                           ),
                         ),
-                        SizedBox(height: 4),
+                        SizedBox(height: 2),
                         Text(
-                          'Completed or archived transactions can be reviewed here.',
-                          style: TextStyle(color: Color(0xFF887F79)),
+                          'Share feedback for your finished sessions.',
+                          style: TextStyle(
+                            color: Color(0xFF817A74),
+                            fontSize: 13,
+                          ),
                         ),
                       ],
                     ),
@@ -1025,7 +1540,7 @@ class _ReadyToReviewTalentSheet extends StatelessWidget {
                           backgroundImage: NetworkImage(talent.avatarUrl),
                         ),
                         const SizedBox(width: 12),
-                        Expanded(
+                                  Expanded(
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
@@ -1040,8 +1555,8 @@ class _ReadyToReviewTalentSheet extends StatelessWidget {
                               Text(
                                 talent.sessionLabel,
                                 style: const TextStyle(
-                                  color: Color(0xFF7E746E),
                                   fontSize: 13,
+                                  color: Color(0xFF7F756D),
                                 ),
                               ),
                               const SizedBox(height: 4),

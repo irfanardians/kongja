@@ -5,6 +5,35 @@ const Color userAmber = Color(0xFF9A654D);
 const Color userAmberDark = Color(0xFF8B5A3C);
 const Color userAmberLight = Color(0xFFD08D43);
 
+const List<String> userTabRoutes = [
+  '/home',
+  '/messages',
+  '/favorites',
+  '/user-profile',
+];
+
+final ValueNotifier<String> userTabRouteNotifier = ValueNotifier<String>(
+  '/home',
+);
+
+String normalizeUserTabRoute(String route) {
+  if (userTabRoutes.contains(route)) {
+    return route;
+  }
+
+  return '/home';
+}
+
+void navigateToUserTab(BuildContext context, String route) {
+  final normalizedRoute = normalizeUserTabRoute(route);
+  final currentRoute = ModalRoute.of(context)?.settings.name;
+
+  userTabRouteNotifier.value = normalizedRoute;
+  if (!userTabRoutes.contains(currentRoute)) {
+    Navigator.pushReplacementNamed(context, normalizedRoute);
+  }
+}
+
 class DemoUserHost {
   const DemoUserHost({
     required this.id,
@@ -15,12 +44,18 @@ class DemoUserHost {
     required this.description,
     required this.imageUrl,
     required this.pricePerMin,
+    required this.tierLabel,
     required this.rating,
     required this.reviewCount,
     required this.badges,
     required this.portfolio,
     required this.isOnline,
     required this.location,
+    this.biography = '',
+    this.accountId = '',
+    this.languages = const [],
+    this.specialties = const [],
+    this.servicePrices = const {},
   });
 
   final int id;
@@ -31,12 +66,18 @@ class DemoUserHost {
   final String description;
   final String imageUrl;
   final int pricePerMin;
+  final String tierLabel;
   final double rating;
   final int reviewCount;
   final List<String> badges;
   final List<String> portfolio;
   final bool isOnline;
   final String location;
+  final String biography;
+  final String accountId;
+  final List<String> languages;
+  final List<String> specialties;
+  final Map<String, int> servicePrices;
 }
 
 const List<DemoUserHost> demoUserHosts = [
@@ -47,8 +88,10 @@ const List<DemoUserHost> demoUserHosts = [
     city: 'Manila',
     countryCode: 'PH',
     description: 'Sweet & Caring',
-    imageUrl: 'https://images.unsplash.com/photo-1512316609839-ce289d3eba0a?w=800',
+    imageUrl:
+        'https://images.unsplash.com/photo-1512316609839-ce289d3eba0a?w=800',
     pricePerMin: 30,
+    tierLabel: 'Gold',
     rating: 4.9,
     reviewCount: 125,
     badges: ['Friendly', 'Verified', 'Travel Buddy'],
@@ -70,8 +113,10 @@ const List<DemoUserHost> demoUserHosts = [
     city: 'Bandung',
     countryCode: 'ID',
     description: 'Elegant & Fun',
-    imageUrl: 'https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=800',
+    imageUrl:
+        'https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=800',
     pricePerMin: 28,
+    tierLabel: 'Silver',
     rating: 4.8,
     reviewCount: 92,
     badges: ['Music', 'Late Night Chat'],
@@ -90,8 +135,10 @@ const List<DemoUserHost> demoUserHosts = [
     city: 'Surabaya',
     countryCode: 'US',
     description: 'Cheerful Soul',
-    imageUrl: 'https://images.unsplash.com/photo-1524504388940-b1c1722653e1?w=800',
+    imageUrl:
+        'https://images.unsplash.com/photo-1524504388940-b1c1722653e1?w=800',
     pricePerMin: 32,
+    tierLabel: 'Gold',
     rating: 4.7,
     reviewCount: 88,
     badges: ['Voice Call', 'Good Listener'],
@@ -110,8 +157,10 @@ const List<DemoUserHost> demoUserHosts = [
     city: 'Bali',
     countryCode: 'VN',
     description: 'Kind Hearted',
-    imageUrl: 'https://images.unsplash.com/photo-1517841905240-472988babdf9?w=800',
+    imageUrl:
+        'https://images.unsplash.com/photo-1517841905240-472988babdf9?w=800',
     pricePerMin: 27,
+    tierLabel: 'Bronze',
     rating: 4.9,
     reviewCount: 140,
     badges: ['Travel', 'Offline Meet'],
@@ -129,8 +178,10 @@ const List<DemoUserHost> demoUserHosts = [
     city: 'Medan',
     countryCode: 'JP',
     description: 'Sweet Smile',
-    imageUrl: 'https://images.unsplash.com/photo-1488426862026-3ee34a7d66df?w=800',
+    imageUrl:
+        'https://images.unsplash.com/photo-1488426862026-3ee34a7d66df?w=800',
     pricePerMin: 25,
+    tierLabel: 'Bronze',
     rating: 4.8,
     reviewCount: 64,
     badges: ['Gaming', 'Study Buddy'],
@@ -148,8 +199,10 @@ const List<DemoUserHost> demoUserHosts = [
     city: 'Makassar',
     countryCode: 'TH',
     description: 'Playful Cat',
-    imageUrl: 'https://images.unsplash.com/photo-1515886657613-9f3515b0c78f?w=800',
+    imageUrl:
+        'https://images.unsplash.com/photo-1515886657613-9f3515b0c78f?w=800',
     pricePerMin: 35,
+    tierLabel: 'VIP',
     rating: 4.9,
     reviewCount: 111,
     badges: ['VIP', 'Video Call'],
@@ -171,9 +224,21 @@ class UserBottomNav extends StatelessWidget {
   Widget build(BuildContext context) {
     final items = [
       _BottomNavItem(icon: Icons.home_rounded, label: 'Home', route: '/home'),
-      _BottomNavItem(icon: Icons.local_activity_rounded, label: 'Activity', route: '/messages'),
-      _BottomNavItem(icon: Icons.favorite_rounded, label: 'Favorites', route: '/favorites'),
-      _BottomNavItem(icon: Icons.person_rounded, label: 'Profile', route: '/user-profile'),
+      _BottomNavItem(
+        icon: Icons.local_activity_rounded,
+        label: 'Activity',
+        route: '/messages',
+      ),
+      _BottomNavItem(
+        icon: Icons.favorite_rounded,
+        label: 'Favorites',
+        route: '/favorites',
+      ),
+      _BottomNavItem(
+        icon: Icons.person_rounded,
+        label: 'Profile',
+        route: '/user-profile',
+      ),
     ];
 
     return Container(
@@ -200,7 +265,7 @@ class UserBottomNav extends StatelessWidget {
               borderRadius: BorderRadius.circular(20),
               onTap: () {
                 if (!isActive) {
-                  Navigator.pushReplacementNamed(context, item.route);
+                  navigateToUserTab(context, item.route);
                 }
               },
               child: Padding(
@@ -217,7 +282,9 @@ class UserBottomNav extends StatelessWidget {
                       child: Icon(
                         item.icon,
                         size: 20,
-                        color: isActive ? Colors.white : const Color(0xFF7F7A75),
+                        color: isActive
+                            ? Colors.white
+                            : const Color(0xFF7F7A75),
                       ),
                     ),
                     const SizedBox(height: 4),
@@ -225,8 +292,12 @@ class UserBottomNav extends StatelessWidget {
                       item.label,
                       style: TextStyle(
                         fontSize: 11,
-                        fontWeight: isActive ? FontWeight.w600 : FontWeight.w500,
-                        color: isActive ? userAmberDark : const Color(0xFF7F7A75),
+                        fontWeight: isActive
+                            ? FontWeight.w600
+                            : FontWeight.w500,
+                        color: isActive
+                            ? userAmberDark
+                            : const Color(0xFF7F7A75),
                       ),
                     ),
                   ],
@@ -241,24 +312,54 @@ class UserBottomNav extends StatelessWidget {
 }
 
 class UserFlagBadge extends StatelessWidget {
-  const UserFlagBadge({super.key, required this.countryCode});
+  const UserFlagBadge({
+    super.key,
+    required this.countryCode,
+    this.size = 42,
+    this.borderWidth = 3,
+    this.innerPadding = 4,
+  });
 
   final String countryCode;
+  final double size;
+  final double borderWidth;
+  final double innerPadding;
 
   @override
   Widget build(BuildContext context) {
+    final normalizedCode = countryCode.trim().toLowerCase();
+    final flagUrl =
+        normalizedCode.length == 2
+            ? 'https://flagcdn.com/w80/$normalizedCode.png'
+            : null;
+
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+      width: size,
+      height: size,
       decoration: BoxDecoration(
         color: Colors.white,
-        borderRadius: BorderRadius.circular(999),
+        shape: BoxShape.circle,
+        border: Border.all(color: Colors.white, width: borderWidth),
+        boxShadow: const [
+          BoxShadow(
+            color: Color(0x26000000),
+            blurRadius: 12,
+            offset: Offset(0, 5),
+          ),
+        ],
       ),
-      child: Text(
-        countryCode,
-        style: const TextStyle(
-          fontSize: 12,
-          fontWeight: FontWeight.w700,
-          color: Color(0xFF303030),
+      child: Padding(
+        padding: EdgeInsets.all(innerPadding),
+        child: ClipOval(
+          child: flagUrl == null
+              ? _FlagCodeFallback(countryCode: countryCode)
+              : Image.network(
+                  flagUrl,
+                  fit: BoxFit.cover,
+                  errorBuilder: (context, error, stackTrace) {
+                    return _FlagCodeFallback(countryCode: countryCode);
+                  },
+                ),
         ),
       ),
     );
@@ -280,52 +381,66 @@ class UserHostCard extends StatelessWidget {
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.center,
         children: [
-          Container(
-            decoration: BoxDecoration(
-              color: Colors.white,
-              borderRadius: BorderRadius.circular(22),
-              boxShadow: const [
-                BoxShadow(
-                  color: Color(0x14000000),
-                  blurRadius: 12,
-                  offset: Offset(0, 6),
-                ),
-              ],
-            ),
-            child: ClipRRect(
-              borderRadius: BorderRadius.circular(22),
-              child: Stack(
-                children: [
-                  AspectRatio(
-                    aspectRatio: 0.78,
-                    child: Image.network(host.imageUrl, fit: BoxFit.cover),
-                  ),
-                  Positioned(
-                    top: 8,
-                    right: 8,
-                    child: Container(
-                      width: 18,
-                      height: 18,
-                      decoration: BoxDecoration(
-                        color: host.isOnline ? const Color(0xFF3BC45B) : const Color(0xFFC9C9C9),
-                        shape: BoxShape.circle,
-                        border: Border.all(color: Colors.white, width: 3),
-                      ),
+          Stack(
+            clipBehavior: Clip.none,
+            children: [
+              Container(
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(22),
+                  boxShadow: const [
+                    BoxShadow(
+                      color: Color(0x14000000),
+                      blurRadius: 12,
+                      offset: Offset(0, 6),
                     ),
+                  ],
+                ),
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(22),
+                  child: Stack(
+                    children: [
+                      AspectRatio(
+                        aspectRatio: 0.78,
+                        child: Image.network(host.imageUrl, fit: BoxFit.cover),
+                      ),
+                      Positioned(
+                        top: 8,
+                        right: 8,
+                        child: Container(
+                          width: 18,
+                          height: 18,
+                          decoration: BoxDecoration(
+                            color: host.isOnline
+                                ? const Color(0xFF3BC45B)
+                                : const Color(0xFFC9C9C9),
+                            shape: BoxShape.circle,
+                            border: Border.all(color: Colors.white, width: 3),
+                          ),
+                        ),
+                      ),
+                      Positioned(
+                        right: 8,
+                        bottom: 8,
+                        child: UserFlagBadge(countryCode: host.countryCode),
+                      ),
+                    ],
                   ),
-                  Positioned(
-                    right: 8,
-                    bottom: 8,
-                    child: UserFlagBadge(countryCode: host.countryCode),
-                  ),
-                ],
+                ),
               ),
-            ),
+              Positioned(
+                right: 56,
+                bottom: -2,
+                child: _UserTierBadge(label: host.tierLabel),
+              ),
+            ],
           ),
           const SizedBox(height: 10),
           Text(
-            '${host.name}, ${host.age}',
+            host.age > 0 ? '${host.name}, ${host.age}' : host.name,
             textAlign: TextAlign.center,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
             style: const TextStyle(
               fontSize: 18,
               fontWeight: FontWeight.w700,
@@ -338,9 +453,16 @@ class UserHostCard extends StatelessWidget {
             children: [
               const Icon(Icons.location_on, size: 16, color: Color(0xFFE54184)),
               const SizedBox(width: 2),
-              Text(
-                host.city,
-                style: const TextStyle(fontSize: 14, color: Color(0xFF7A716D)),
+              Flexible(
+                child: Text(
+                  host.city,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    fontSize: 14,
+                    color: Color(0xFF7A716D),
+                  ),
+                ),
               ),
             ],
           ),
@@ -348,16 +470,22 @@ class UserHostCard extends StatelessWidget {
           Text(
             host.description,
             textAlign: TextAlign.center,
+            maxLines: 2,
+            overflow: TextOverflow.ellipsis,
             style: const TextStyle(fontSize: 14, color: Color(0xFF8A633D)),
           ),
           const SizedBox(height: 2),
           Row(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              const Icon(Icons.monetization_on, size: 16, color: Color(0xFFF1B62D)),
+              const Icon(
+                Icons.monetization_on,
+                size: 16,
+                color: Color(0xFFF1B62D),
+              ),
               const SizedBox(width: 2),
               Text(
-                '${host.pricePerMin} / Min',
+                '${host.pricePerMin} / Hour',
                 style: const TextStyle(
                   fontSize: 14,
                   fontWeight: FontWeight.w500,
@@ -373,9 +501,86 @@ class UserHostCard extends StatelessWidget {
 }
 
 class _BottomNavItem {
-  const _BottomNavItem({required this.icon, required this.label, required this.route});
+  const _BottomNavItem({
+    required this.icon,
+    required this.label,
+    required this.route,
+  });
 
   final IconData icon;
   final String label;
   final String route;
+}
+
+class _UserTierBadge extends StatelessWidget {
+  const _UserTierBadge({required this.label});
+
+  final String label;
+
+  @override
+  Widget build(BuildContext context) {
+    final assetPath = _TierAssetResolver.assetPathFor(label);
+    if (assetPath == null) {
+      return const SizedBox.shrink();
+    }
+
+    return SizedBox(
+      width: 64,
+      height: 64,
+      child: ColoredBox(
+        color: Colors.transparent,
+        child: Image.asset(
+          assetPath,
+          fit: BoxFit.contain,
+          alignment: Alignment.center,
+          filterQuality: FilterQuality.high,
+          gaplessPlayback: true,
+        ),
+      ),
+    );
+  }
+}
+
+class _FlagCodeFallback extends StatelessWidget {
+  const _FlagCodeFallback({required this.countryCode});
+
+  final String countryCode;
+
+  @override
+  Widget build(BuildContext context) {
+    return ColoredBox(
+      color: const Color(0xFFF4EFE7),
+      child: Center(
+        child: Text(
+          countryCode.trim().toUpperCase(),
+          style: const TextStyle(
+            fontSize: 11,
+            fontWeight: FontWeight.w800,
+            color: Color(0xFF5F554B),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _TierAssetResolver {
+  static String? assetPathFor(String label) {
+    switch (label.toLowerCase()) {
+      case 'bronze':
+      case 'basic':
+        return 'lib/tier/bronze.PNG';
+      case 'silver':
+        return 'lib/tier/silver.PNG';
+      case 'gold':
+        return 'lib/tier/gold.PNG';
+      case 'platinum':
+        return 'lib/tier/platinum.PNG';
+      case 'diamond':
+      case 'vip':
+        return 'lib/tier/diamond.PNG';
+      default:
+        return null;
+    }
+  }
 }

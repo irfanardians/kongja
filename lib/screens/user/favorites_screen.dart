@@ -13,7 +13,10 @@ import 'package:flutter/material.dart';
 import 'user_ui_shared.dart';
 
 class FavoritesScreen extends StatefulWidget {
-  const FavoritesScreen({Key? key}) : super(key: key);
+  const FavoritesScreen({Key? key, this.showBottomNav = true})
+    : super(key: key);
+
+  final bool showBottomNav;
 
   @override
   State<FavoritesScreen> createState() => _FavoritesScreenState();
@@ -26,7 +29,9 @@ class _FavoritesScreenState extends State<FavoritesScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: userCreamBackground,
-      bottomNavigationBar: const UserBottomNav(currentRoute: '/favorites'),
+      bottomNavigationBar: widget.showBottomNav
+          ? const UserBottomNav(currentRoute: '/favorites')
+          : null,
       body: SafeArea(
         bottom: false,
         child: SingleChildScrollView(
@@ -58,7 +63,11 @@ class _FavoritesScreenState extends State<FavoritesScreen> {
                                 width: itemWidth,
                                 child: UserHostCard(
                                   host: host,
-                                  onTap: () => Navigator.pushNamed(context, '/profile'),
+                                  onTap: () => Navigator.pushNamed(
+                                    context,
+                                    '/profile',
+                                    arguments: host,
+                                  ),
                                 ),
                               ),
                             )

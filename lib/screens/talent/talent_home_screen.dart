@@ -10,6 +10,8 @@
 
 import 'package:flutter/material.dart';
 
+import '../../core/services/auth_service.dart';
+import '../../core/services/talent_profile_service.dart';
 import '../../shared/demo_schedule_store.dart';
 import 'talent_ui_shared.dart';
 
@@ -24,7 +26,10 @@ const List<_AnalyticsBarPoint> _demoWeeklyAnalytics = [
 ];
 
 class TalentHomeScreen extends StatefulWidget {
-  const TalentHomeScreen({Key? key}) : super(key: key);
+  const TalentHomeScreen({Key? key, this.showBottomNav = true})
+    : super(key: key);
+
+  final bool showBottomNav;
 
   @override
   State<TalentHomeScreen> createState() => _TalentHomeScreenState();
@@ -32,14 +37,131 @@ class TalentHomeScreen extends StatefulWidget {
 
 class _TalentHomeScreenState extends State<TalentHomeScreen> {
   static const String _currentTalentHostName = 'Clara';
+  static const String _defaultTalentAvatarUrl =
+      'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=100';
 
   // TODO: Ambil data talent home dari backend
   // Gunakan Provider/Bloc untuk fetch data
 
   bool isOnline = true;
   double currentRating = 4.8;
-  int monthlyEarnings = 12500;
+  int todayEarnings = 0;
+  int weeklyEarnings = 0;
+  int monthlyEarnings = 0;
   bool showTierDetails = false;
+  String _backendLevel = '';
+  String _stageName = 'Talent';
+  String _talentAvatarUrl = _defaultTalentAvatarUrl;
+  bool _isUpdatingOnlineStatus = false;
+
+  @override
+  void initState() {
+    super.initState();
+    final cachedProfile = TalentProfileService.peekCachedMyProfile();
+    if (cachedProfile != null) {
+      _applyProfile(cachedProfile);
+    }
+    _loadTalentProfile();
+  }
+
+  void _applyProfile(TalentProfileData profile) {
+    if (profile.avatarUrl.isNotEmpty) {
+      _talentAvatarUrl = profile.avatarUrl;
+    }
+    isOnline = profile.isOnline;
+    if (profile.stageName.isNotEmpty) {
+      _stageName = profile.stageName;
+    }
+    _backendLevel = profile.level;
+    currentRating = profile.averageRating;
+    todayEarnings = profile.todayCoinEarning;
+    weeklyEarnings = profile.thisWeekCoinEarning;
+    monthlyEarnings = profile.monthToDateCoinEarning;
+  }
+
+  Future<void> _loadTalentProfile({bool forceRefresh = false}) async {
+    try {
+      final profile = await TalentProfileService.getMyProfile(
+        forceRefresh: forceRefresh,
+      );
+      if (!mounted) {
+        return;
+      }
+
+      setState(() {
+        _applyProfile(profile);
+      });
+    } catch (_) {
+      if (!mounted) {
+        return;
+      }
+    }
+  }
+
+  Future<void> _setOnlineStatus(bool value) async {
+    if (_isUpdatingOnlineStatus) {
+      return;
+    }
+
+    final previousValue = isOnline;
+    setState(() {
+      isOnline = value;
+      _isUpdatingOnlineStatus = true;
+    });
+
+    try {
+      await TalentProfileService.updateOnlineStatus(value);
+    } on AuthServiceException catch (error) {
+      if (!mounted) {
+        return;
+      }
+      setState(() {
+        isOnline = previousValue;
+        _isUpdatingOnlineStatus = false;
+      });
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(error.message)),
+      );
+      return;
+    } catch (_) {
+      if (!mounted) {
+        return;
+      }
+      setState(() {
+        isOnline = previousValue;
+        _isUpdatingOnlineStatus = false;
+      });
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Gagal mengubah status online. Coba lagi.'),
+        ),
+      );
+      return;
+    }
+
+    if (!mounted) {
+      return;
+    }
+
+    setState(() {
+      _isUpdatingOnlineStatus = false;
+    });
+  }
+
+  Future<void> _refreshHomeData() async {
+    try {
+      final profile = await TalentProfileService.refreshRelatedData();
+      if (!mounted) {
+        return;
+      }
+
+      setState(() {
+        _applyProfile(profile);
+      });
+    } catch (_) {
+      await _loadTalentProfile(forceRefresh: true);
+    }
+  }
 
   // Tier config mirip React
   final List<Map<String, dynamic>> tiers = [
@@ -91,6 +213,11 @@ class _TalentHomeScreenState extends State<TalentHomeScreen> {
   ];
 
   Map<String, dynamic> getCurrentTier() {
+    final backendTier = _findTierByLevel(_backendLevel);
+    if (backendTier != null) {
+      return backendTier;
+    }
+
     Map<String, dynamic> eligibleTier = tiers[0];
     for (final tier in tiers) {
       final meetsCoins =
@@ -114,6 +241,28 @@ class _TalentHomeScreenState extends State<TalentHomeScreen> {
     return eligibleTier;
   }
 
+  Map<String, dynamic>? _findTierByLevel(String level) {
+    final normalized = level.trim().toLowerCase();
+    if (normalized.isEmpty) {
+      return null;
+    }
+
+    final aliases = <String, String>{
+      'basic': 'bronze',
+      'vip': 'diamond',
+    };
+    final resolved = aliases[normalized] ?? normalized;
+
+    for (final tier in tiers) {
+      final tierName = (tier['name'] as String).trim().toLowerCase();
+      if (tierName == resolved) {
+        return tier;
+      }
+    }
+
+    return null;
+  }
+
   Map<String, dynamic>? getNextTier(Map<String, dynamic> currentTier) {
     final idx = tiers.indexOf(currentTier);
     if (idx == tiers.length - 1) return null;
@@ -130,6 +279,58 @@ class _TalentHomeScreenState extends State<TalentHomeScreen> {
     final range = nextMin - currentMin;
     final progress = ((monthlyEarnings - currentMin) / range) * 100;
     return progress.clamp(0, 100);
+  }
+
+  String _formatCoinAmount(int amount) {
+    final digits = amount.abs().toString();
+    final buffer = StringBuffer();
+
+    for (var index = 0; index < digits.length; index++) {
+      final reverseIndex = digits.length - index;
+      buffer.write(digits[index]);
+      if (reverseIndex > 1 && reverseIndex % 3 == 1) {
+        buffer.write(',');
+      }
+    }
+
+    final formatted = buffer.toString();
+    return amount < 0 ? '-$formatted' : formatted;
+  }
+
+  String? _tierAssetPath(String label) {
+    switch (label.toLowerCase()) {
+      case 'bronze':
+      case 'basic':
+        return 'lib/tier/bronze.PNG';
+      case 'silver':
+        return 'lib/tier/silver.PNG';
+      case 'gold':
+        return 'lib/tier/gold.PNG';
+      case 'platinum':
+        return 'lib/tier/platinum.PNG';
+      case 'diamond':
+      case 'vip':
+        return 'lib/tier/diamond.PNG';
+      default:
+        return null;
+    }
+  }
+
+  Widget _buildTierAssetBadge(String label, {double size = 28}) {
+    final assetPath = _tierAssetPath(label);
+    if (assetPath == null) {
+      return const SizedBox.shrink();
+    }
+
+    return SizedBox(
+      width: size,
+      height: size,
+      child: Image.asset(
+        assetPath,
+        fit: BoxFit.contain,
+        filterQuality: FilterQuality.high,
+      ),
+    );
   }
 
   Future<void> _openScheduleSheet() async {
@@ -182,6 +383,7 @@ class _TalentHomeScreenState extends State<TalentHomeScreen> {
     final currentTier = getCurrentTier();
     final nextTier = getNextTier(currentTier);
     final progress = getProgress(currentTier, nextTier);
+    final headerTopPadding = MediaQuery.paddingOf(context).top + 20;
 
     return ValueListenableBuilder<List<DemoMeetRequest>>(
       valueListenable: demoScheduleStore,
@@ -192,15 +394,20 @@ class _TalentHomeScreenState extends State<TalentHomeScreen> {
 
         return Scaffold(
           backgroundColor: const Color(0xFFFFF8E1),
-          bottomNavigationBar: const TalentBottomNav(
-            currentRoute: '/talent-home',
-          ),
+          bottomNavigationBar: widget.showBottomNav
+              ? const TalentBottomNav(currentRoute: '/talent-home')
+              : null,
           body: Stack(
             children: [
-              SingleChildScrollView(
-                padding: EdgeInsets.zero,
-                child: Column(
-                  children: [
+              RefreshIndicator(
+                color: const Color(0xFFB45309),
+                backgroundColor: Colors.white,
+                onRefresh: _refreshHomeData,
+                child: SingleChildScrollView(
+                  physics: const AlwaysScrollableScrollPhysics(),
+                  padding: EdgeInsets.zero,
+                  child: Column(
+                    children: [
                     // Header gradient, avatar, tier badge, online toggle
                     Container(
                       decoration: const BoxDecoration(
@@ -213,106 +420,125 @@ class _TalentHomeScreenState extends State<TalentHomeScreen> {
                           bottom: Radius.circular(32),
                         ),
                       ),
-                      padding: const EdgeInsets.fromLTRB(24, 48, 24, 24),
+                      padding: EdgeInsets.fromLTRB(
+                        24,
+                        headerTopPadding,
+                        24,
+                        24,
+                      ),
                       child: Column(
                         children: [
                           Row(
-                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
-                              Row(
-                                children: [
-                                  Stack(
-                                    children: [
-                                      CircleAvatar(
-                                        radius: 28,
-                                        backgroundImage: NetworkImage(
-                                          'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=100',
-                                        ),
-                                      ),
-                                      Positioned(
-                                        bottom: 0,
-                                        right: 0,
-                                        child: Container(
-                                          padding: const EdgeInsets.all(2),
-                                          decoration: BoxDecoration(
-                                            color: Colors.white,
-                                            shape: BoxShape.circle,
+                              Expanded(
+                                child: Row(
+                                  crossAxisAlignment: CrossAxisAlignment.center,
+                                  children: [
+                                    Stack(
+                                      children: [
+                                        CircleAvatar(
+                                          radius: 28,
+                                          backgroundImage: NetworkImage(
+                                            _talentAvatarUrl,
                                           ),
-                                          child: const Icon(
-                                            Icons.flag,
-                                            size: 16,
-                                            color: Colors.orange,
-                                          ), // TODO: Ganti dengan widget bendera
                                         ),
-                                      ),
-                                    ],
-                                  ),
-                                  const SizedBox(width: 12),
-                                  Column(
-                                    crossAxisAlignment:
-                                        CrossAxisAlignment.start,
-                                    children: [
-                                      Row(
-                                        children: [
-                                          const Text(
-                                            'Welcome Back!',
-                                            style: TextStyle(
-                                              fontSize: 18,
-                                              fontWeight: FontWeight.bold,
-                                              color: Colors.white,
-                                            ),
-                                          ),
-                                          const SizedBox(width: 8),
-                                          Container(
+                                        Positioned(
+                                          bottom: 0,
+                                          right: 0,
+                                          child: Container(
+                                            padding: const EdgeInsets.all(2),
                                             decoration: BoxDecoration(
-                                              gradient: LinearGradient(
-                                                colors: List<Color>.from(
-                                                  currentTier['bgGradient'],
+                                              color: Colors.white,
+                                              shape: BoxShape.circle,
+                                            ),
+                                            child: const Icon(
+                                              Icons.flag,
+                                              size: 16,
+                                              color: Colors.orange,
+                                            ),
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                    const SizedBox(width: 12),
+                                    Expanded(
+                                      child: Column(
+                                        crossAxisAlignment:
+                                            CrossAxisAlignment.start,
+                                        children: [
+                                          Wrap(
+                                            spacing: 8,
+                                            runSpacing: 8,
+                                            crossAxisAlignment:
+                                                WrapCrossAlignment.center,
+                                            children: [
+                                              Text(
+                                                'Welcome Back!',
+                                                style: const TextStyle(
+                                                  fontSize: 18,
+                                                  fontWeight: FontWeight.bold,
+                                                  color: Colors.white,
                                                 ),
                                               ),
-                                              borderRadius:
-                                                  BorderRadius.circular(16),
-                                              border: Border.all(
-                                                color: Colors.white30,
+                                              Container(
+                                                decoration: BoxDecoration(
+                                                  gradient: LinearGradient(
+                                                    colors: List<Color>.from(
+                                                      currentTier['bgGradient'],
+                                                    ),
+                                                  ),
+                                                  borderRadius:
+                                                      BorderRadius.circular(16),
+                                                  border: Border.all(
+                                                    color: Colors.white30,
+                                                  ),
+                                                ),
+                                                padding:
+                                                    const EdgeInsets.symmetric(
+                                                      horizontal: 10,
+                                                      vertical: 2,
+                                                    ),
+                                                child: Row(
+                                                  mainAxisSize:
+                                                      MainAxisSize.min,
+                                                  children: [
+                                                    _buildTierAssetBadge(
+                                                      currentTier['name'],
+                                                      size: 30,
+                                                    ),
+                                                    const SizedBox(width: 4),
+                                                    Text(
+                                                      currentTier['name'],
+                                                      style: const TextStyle(
+                                                        fontSize: 12,
+                                                        fontWeight:
+                                                            FontWeight.bold,
+                                                        color: Colors.white,
+                                                      ),
+                                                    ),
+                                                  ],
+                                                ),
                                               ),
-                                            ),
-                                            padding: const EdgeInsets.symmetric(
-                                              horizontal: 10,
-                                              vertical: 2,
-                                            ),
-                                            child: Row(
-                                              children: [
-                                                Text(
-                                                  currentTier['badge'],
-                                                  style: const TextStyle(
-                                                    fontSize: 16,
-                                                  ),
-                                                ),
-                                                const SizedBox(width: 4),
-                                                Text(
-                                                  currentTier['name'],
-                                                  style: const TextStyle(
-                                                    fontSize: 12,
-                                                    fontWeight: FontWeight.bold,
-                                                    color: Colors.white,
-                                                  ),
-                                                ),
-                                              ],
+                                            ],
+                                          ),
+                                          const SizedBox(height: 6),
+                                          Text(
+                                            _stageName,
+                                            maxLines: 1,
+                                            overflow: TextOverflow.ellipsis,
+                                            style: const TextStyle(
+                                              color: Color(0xFFFFF7D6),
+                                              fontSize: 14,
                                             ),
                                           ),
                                         ],
                                       ),
-                                      const Text(
-                                        'Jessica Martinez',
-                                        style: TextStyle(
-                                          color: Color(0xFFFFF7D6),
-                                          fontSize: 14,
-                                        ),
-                                      ),
-                                    ],
-                                  ),
-                                ],
+                                    ),
+                                  ],
+                                ),
                               ),
+                              const SizedBox(width: 8),
                               Stack(
                                 children: [
                                   IconButton(
@@ -321,7 +547,7 @@ class _TalentHomeScreenState extends State<TalentHomeScreen> {
                                       color: Colors.white,
                                     ),
                                     onPressed: () {
-                                      Navigator.pushNamed(
+                                      navigateToTalentTab(
                                         context,
                                         '/talent-messages',
                                       );
@@ -393,10 +619,9 @@ class _TalentHomeScreenState extends State<TalentHomeScreen> {
                                 ),
                                 Switch(
                                   value: isOnline,
-                                  onChanged: (val) {
-                                    setState(() => isOnline = val);
-                                    // TODO: Update status online ke backend
-                                  },
+                                  onChanged: _isUpdatingOnlineStatus
+                                      ? null
+                                      : (val) => _setOnlineStatus(val),
                                   activeColor: Colors.green,
                                 ),
                               ],
@@ -444,9 +669,9 @@ class _TalentHomeScreenState extends State<TalentHomeScreen> {
                                   children: [
                                     Row(
                                       children: [
-                                        Text(
-                                          currentTier['badge'],
-                                          style: const TextStyle(fontSize: 32),
+                                        _buildTierAssetBadge(
+                                          currentTier['name'],
+                                          size: 62,
                                         ),
                                         const SizedBox(width: 10),
                                         Column(
@@ -687,9 +912,9 @@ class _TalentHomeScreenState extends State<TalentHomeScreen> {
                                     ),
                                     child: Row(
                                       children: [
-                                        Text(
-                                          tier['badge'],
-                                          style: const TextStyle(fontSize: 22),
+                                        _buildTierAssetBadge(
+                                          tier['name'],
+                                          size: 44,
                                         ),
                                         const SizedBox(width: 10),
                                         Column(
@@ -773,7 +998,7 @@ class _TalentHomeScreenState extends State<TalentHomeScreen> {
                               ),
                               padding: const EdgeInsets.all(16),
                               child: Column(
-                                children: const [
+                                children: [
                                   Icon(
                                     Icons.monetization_on,
                                     color: Colors.green,
@@ -787,7 +1012,7 @@ class _TalentHomeScreenState extends State<TalentHomeScreen> {
                                     ),
                                   ),
                                   Text(
-                                    '🪙 450',
+                                    '🪙 ${_formatCoinAmount(todayEarnings)}',
                                     style: TextStyle(
                                       fontWeight: FontWeight.bold,
                                       fontSize: 18,
@@ -895,7 +1120,7 @@ class _TalentHomeScreenState extends State<TalentHomeScreen> {
                         padding: const EdgeInsets.all(20),
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
-                          children: const [
+                          children: [
                             Row(
                               mainAxisAlignment: MainAxisAlignment.spaceBetween,
                               children: [
@@ -914,7 +1139,7 @@ class _TalentHomeScreenState extends State<TalentHomeScreen> {
                             ),
                             SizedBox(height: 8),
                             Text(
-                              '🪙 2,450 Coins',
+                              '🪙 ${_formatCoinAmount(weeklyEarnings)} Coins',
                               style: TextStyle(
                                 color: Colors.white,
                                 fontWeight: FontWeight.bold,
@@ -1165,6 +1390,7 @@ class _TalentHomeScreenState extends State<TalentHomeScreen> {
                     ),
                   ],
                 ),
+              ),
               ),
             ],
           ),

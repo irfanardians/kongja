@@ -1,20 +1,17 @@
 import 'package:flutter/material.dart';
-import 'screens/talent/talent_profile_screen.dart';
-import 'screens/talent/talent_home_screen.dart';
-import 'screens/talent/talent_messages_screen.dart';
-import 'screens/talent/talent_settings_screen.dart';
+
+import 'core/auth/auth_session.dart';
+import 'screens/talent/talent_tab_shell.dart';
 import 'screens/talent/register_talent_screen.dart';
+import 'screens/shared/loading_splash.dart';
 import 'screens/user/login_screen.dart';
 import 'screens/user/register_screen.dart';
-import 'screens/user/home_screen.dart';
 import 'screens/user/profile_screen.dart';
 import 'screens/user/chat_screen.dart';
-import 'screens/user/messages_screen.dart';
 import 'screens/user/settings_screen.dart';
-import 'screens/user/favorites_screen.dart';
 import 'screens/user/topup_screen.dart';
 import 'screens/user/transaction_history_screen.dart';
-import 'screens/user/user_profile_screen.dart';
+import 'screens/user/user_tab_shell.dart';
 
 class _NoAnimationPageTransitionsBuilder extends PageTransitionsBuilder {
   const _NoAnimationPageTransitionsBuilder();
@@ -31,12 +28,49 @@ class _NoAnimationPageTransitionsBuilder extends PageTransitionsBuilder {
   }
 }
 
-void main() {
-  runApp(const MyApp());
+Future<void> main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+  await AuthSession.instance.restore();
+  runApp(MyApp(initialRoute: AuthSession.instance.launchRoute));
 }
 
 class MyApp extends StatelessWidget {
-  const MyApp({super.key});
+  const MyApp({super.key, required this.initialRoute});
+
+  final String initialRoute;
+
+  static final Map<String, WidgetBuilder> _routeBuilders = {
+    '/login': (context) => const LoginScreen(),
+    '/register': (context) => const RegisterScreen(),
+    '/home': (context) => const UserTabShell(initialRoute: '/home'),
+    '/profile': (context) => const ProfileScreen(),
+    '/chat': (context) => const ChatScreen(),
+    '/messages': (context) => const UserTabShell(initialRoute: '/messages'),
+    '/settings': (context) => const SettingsScreen(),
+    '/favorites': (context) => const UserTabShell(initialRoute: '/favorites'),
+    '/topup': (context) => const TopUpScreen(),
+    '/transactions': (context) => const TransactionHistoryScreen(),
+    '/user-profile': (context) =>
+      const UserTabShell(initialRoute: '/user-profile'),
+    '/talent-home': (context) =>
+      const TalentTabShell(initialRoute: '/talent-home'),
+    '/talent-profile': (context) =>
+      const TalentTabShell(initialRoute: '/talent-profile'),
+    '/talent-messages': (context) =>
+      const TalentTabShell(initialRoute: '/talent-messages'),
+    '/talent-settings': (context) =>
+      const TalentTabShell(initialRoute: '/talent-settings'),
+    '/register-talent': (context) => const RegisterTalentScreen(),
+  };
+
+  Route<dynamic>? _buildRoute(RouteSettings settings) {
+    final builder = _routeBuilders[settings.name];
+    if (builder == null) {
+      return null;
+    }
+
+    return MaterialPageRoute<dynamic>(settings: settings, builder: builder);
+  }
 
   // This widget is the root of your application.
   @override
@@ -44,6 +78,9 @@ class MyApp extends StatelessWidget {
     return MaterialApp(
       debugShowCheckedModeBanner: false,
       title: 'Talent Profile Demo',
+      builder: (context, child) {
+        return AppLoadingOverlay(child: child ?? const SizedBox.shrink());
+      },
       theme: ThemeData(
         colorScheme: ColorScheme.fromSeed(seedColor: const Color(0xFF9A654D)),
         scaffoldBackgroundColor: const Color(0xFFF5F1E8),
@@ -62,28 +99,8 @@ class MyApp extends StatelessWidget {
           },
         ),
       ),
-      initialRoute: '/login',
-      routes: {
-        // User routes
-        '/login': (context) => const LoginScreen(),
-        '/register': (context) => const RegisterScreen(),
-        '/home': (context) => const HomeScreen(),
-        '/profile': (context) => const ProfileScreen(),
-        '/chat': (context) => const ChatScreen(),
-        '/messages': (context) => const MessagesScreen(),
-        '/settings': (context) => const SettingsScreen(),
-        '/favorites': (context) => const FavoritesScreen(),
-        '/topup': (context) => const TopUpScreen(),
-        '/transactions': (context) => const TransactionHistoryScreen(),
-        '/user-profile': (context) => const UserProfileScreen(),
-
-        // Talent routes
-        '/talent-home': (context) => const TalentHomeScreen(),
-        '/talent-profile': (context) => const TalentProfileScreen(),
-        '/talent-messages': (context) => const TalentMessagesScreen(),
-        '/talent-settings': (context) => const TalentSettingsScreen(),
-        '/register-talent': (context) => const RegisterTalentScreen(),
-      },
+      initialRoute: initialRoute,
+      onGenerateRoute: _buildRoute,
     );
   }
 }

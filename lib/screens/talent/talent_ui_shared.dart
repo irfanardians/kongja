@@ -6,6 +6,35 @@ const Color talentAmber = Color(0xFFF59E42);
 const Color talentPink = Color(0xFFDB2777);
 const Color talentPurple = Color(0xFF7C3AED);
 
+const List<String> talentTabRoutes = [
+  '/talent-home',
+  '/talent-messages',
+  '/talent-profile',
+  '/talent-settings',
+];
+
+final ValueNotifier<String> talentTabRouteNotifier = ValueNotifier<String>(
+  '/talent-home',
+);
+
+String normalizeTalentTabRoute(String route) {
+  if (talentTabRoutes.contains(route)) {
+    return route;
+  }
+
+  return '/talent-home';
+}
+
+void navigateToTalentTab(BuildContext context, String route) {
+  final normalizedRoute = normalizeTalentTabRoute(route);
+  final currentRoute = ModalRoute.of(context)?.settings.name;
+
+  talentTabRouteNotifier.value = normalizedRoute;
+  if (!talentTabRoutes.contains(currentRoute)) {
+    Navigator.pushReplacementNamed(context, normalizedRoute);
+  }
+}
+
 class TalentBottomNav extends StatelessWidget {
   const TalentBottomNav({super.key, required this.currentRoute});
 
@@ -60,7 +89,7 @@ class TalentBottomNav extends StatelessWidget {
               borderRadius: BorderRadius.circular(18),
               onTap: () {
                 if (!isActive) {
-                  Navigator.pushReplacementNamed(context, item.route);
+                  navigateToTalentTab(context, item.route);
                 }
               },
               child: Padding(

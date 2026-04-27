@@ -11,6 +11,9 @@
 
 import 'package:flutter/material.dart';
 
+import '../../core/services/auth_service.dart';
+import '../../core/services/user_profile_service.dart';
+import '../shared/loading_splash.dart';
 import 'user_ui_shared.dart';
 
 class SettingsScreen extends StatefulWidget {
@@ -22,13 +25,275 @@ class SettingsScreen extends StatefulWidget {
 
 class _SettingsScreenState extends State<SettingsScreen> {
   String activeTab = 'basic';
-  bool showPassword = false;
+  bool showCurrentPassword = false;
+  bool showNewPassword = false;
+  bool showConfirmPassword = false;
+  UserProfileData? _profile;
+  bool _isLoadingProfile = false;
+  late final TextEditingController _callNameController;
+  late final TextEditingController _emailController;
+  late final TextEditingController _phoneCountryCodeController;
+  late final TextEditingController _phoneController;
+  late final TextEditingController _addressController;
+  late final TextEditingController _cityController;
+  late final TextEditingController _countryController;
+  late final TextEditingController _postcodeController;
+  late final TextEditingController _currentPasswordController;
+  late final TextEditingController _newPasswordController;
+  late final TextEditingController _confirmPasswordController;
   final verificationStatus = {
     'idCard': false,
     'selfie': false,
     'phone': true,
     'email': true,
   };
+
+  @override
+  void initState() {
+    super.initState();
+    _callNameController = TextEditingController();
+    _emailController = TextEditingController();
+    _phoneCountryCodeController = TextEditingController();
+    _phoneController = TextEditingController();
+    _addressController = TextEditingController();
+    _cityController = TextEditingController();
+    _countryController = TextEditingController();
+    _postcodeController = TextEditingController();
+    _currentPasswordController = TextEditingController();
+    _newPasswordController = TextEditingController();
+    _confirmPasswordController = TextEditingController();
+
+    final cachedProfile = UserProfileService.peekCachedMyProfile();
+    if (cachedProfile != null) {
+      _applyProfile(cachedProfile);
+    }
+
+    _loadProfile(forceRefresh: cachedProfile != null);
+  }
+
+  @override
+  void dispose() {
+    _callNameController.dispose();
+    _emailController.dispose();
+    _phoneCountryCodeController.dispose();
+    _phoneController.dispose();
+    _addressController.dispose();
+    _cityController.dispose();
+    _countryController.dispose();
+    _postcodeController.dispose();
+    _currentPasswordController.dispose();
+    _newPasswordController.dispose();
+    _confirmPasswordController.dispose();
+    super.dispose();
+  }
+
+  void _applyProfile(UserProfileData profile) {
+    _profile = profile;
+    _callNameController.text = profile.callName;
+    _emailController.text = profile.email;
+    _phoneCountryCodeController.text = profile.phoneCountryCode;
+    _phoneController.text = profile.phone;
+    _addressController.text = profile.address;
+    _cityController.text = profile.city;
+    _countryController.text = profile.country;
+    _postcodeController.text = profile.postcode;
+  }
+
+  Future<void> _loadProfile({bool forceRefresh = false}) async {
+    if (_isLoadingProfile) {
+      return;
+    }
+
+    setState(() => _isLoadingProfile = true);
+    try {
+      final profile = await UserProfileService.getMyProfile(
+        forceRefresh: forceRefresh,
+      );
+      if (!mounted) {
+        return;
+      }
+      setState(() {
+        _applyProfile(profile);
+      });
+    } on AuthServiceException catch (error) {
+      if (!mounted) {
+        return;
+      }
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(error.message)));
+    } catch (error) {
+      if (!mounted) {
+        return;
+      }
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Gagal memuat pengaturan user: $error')),
+      );
+    } finally {
+      if (mounted) {
+        setState(() => _isLoadingProfile = false);
+      }
+    }
+  }
+
+  Future<void> _saveBasicSettings() async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) {
+        return AlertDialog(
+          title: const Text('Konfirmasi Perubahan'),
+          content: const Text(
+            'Apakah anda yakin ingin mengubah settingan ini?',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(dialogContext).pop(false),
+              child: const Text('Batal'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.of(dialogContext).pop(true),
+              child: const Text('Ya'),
+            ),
+          ],
+        );
+      },
+    );
+
+    if (confirmed != true || !mounted) {
+      return;
+    }
+
+    try {
+      final profile = await AppLoadingOverlay.of(context).run<UserProfileData>(
+        () async {
+          return UserProfileService.updateBasicSettings(
+            callName: _callNameController.text.trim(),
+            email: _emailController.text.trim(),
+            phoneCountryCode: _phoneCountryCodeController.text.trim(),
+            phone: _phoneController.text.trim(),
+            address: _addressController.text.trim(),
+            city: _cityController.text.trim(),
+            country: _countryController.text.trim(),
+            postcode: _postcodeController.text.trim(),
+          );
+        },
+      );
+
+      if (!mounted) {
+        return;
+      }
+
+      setState(() {
+        _applyProfile(profile);
+      });
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Pengaturan user berhasil disimpan.')),
+      );
+    } on AuthServiceException catch (error) {
+      if (!mounted) {
+        return;
+      }
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(error.message)));
+    } catch (error) {
+      if (!mounted) {
+        return;
+      }
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Gagal menyimpan pengaturan user: $error')),
+      );
+    }
+  }
+
+  Future<void> _changePassword() async {
+    final currentPassword = _currentPasswordController.text.trim();
+    final newPassword = _newPasswordController.text.trim();
+    final confirmPassword = _confirmPasswordController.text.trim();
+
+    if (currentPassword.isEmpty ||
+        newPassword.isEmpty ||
+        confirmPassword.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Semua field password harus diisi.')),
+      );
+      return;
+    }
+
+    if (newPassword != confirmPassword) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Konfirmasi password baru tidak cocok.'),
+        ),
+      );
+      return;
+    }
+
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) {
+        return AlertDialog(
+          title: const Text('Konfirmasi Perubahan'),
+          content: const Text('Apakah anda yakin ingin mengubah password ini?'),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(dialogContext).pop(false),
+              child: const Text('Batal'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.of(dialogContext).pop(true),
+              child: const Text('Oke'),
+            ),
+          ],
+        );
+      },
+    );
+
+    if (confirmed != true || !mounted) {
+      return;
+    }
+
+    try {
+      await AppLoadingOverlay.of(context).run<void>(() async {
+        await UserProfileService.changePassword(
+          currentPassword: currentPassword,
+          newPassword: newPassword,
+          confirmPassword: confirmPassword,
+        );
+      });
+
+      _currentPasswordController.clear();
+      _newPasswordController.clear();
+      _confirmPasswordController.clear();
+
+      if (!mounted) {
+        return;
+      }
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Password user berhasil diperbarui.')),
+      );
+    } on AuthServiceException catch (error) {
+      if (!mounted) {
+        return;
+      }
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(error.message)),
+      );
+    } catch (error) {
+      if (!mounted) {
+        return;
+      }
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Gagal mengubah password user: $error')),
+      );
+    }
+  }
+
+  String _displayValue(String value) {
+    final trimmed = value.trim();
+    return trimmed.isNotEmpty ? trimmed : '-';
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -78,11 +343,23 @@ class _SettingsScreenState extends State<SettingsScreen> {
                       _sectionCard(
                         title: 'Personal Information',
                         children: [
-                          _editableField('Call Name (Nickname)', Icons.person_outline_rounded, 'Alex', helper: 'This is how others will see your name'),
-                          _editableField('Email Address', Icons.mail_outline_rounded, 'alex.johnson@email.com',
+                          if (_isLoadingProfile && _profile == null)
+                            const Padding(
+                              padding: EdgeInsets.only(bottom: 14),
+                              child: LinearProgressIndicator(minHeight: 3),
+                            ),
+                          _editableField('Call Name (Nickname)', Icons.person_outline_rounded,
+                              controller: _callNameController,
+                              helper: 'This is how others will see your name'),
+                          _editableField('Email Address', Icons.mail_outline_rounded,
+                              controller: _emailController,
                               trailing: verificationStatus['email']! ? const Icon(Icons.check_circle, color: Color(0xFF2FA655)) : null,
                               warning: 'Changing email requires re-verification'),
-                          _editableField('Phone Number', Icons.phone_outlined, '+1 (555) 123-4567',
+                          _editableField('Phone Country Code', Icons.flag_outlined,
+                              controller: _phoneCountryCodeController,
+                              helper: 'Example: +62'),
+                          _editableField('Phone Number', Icons.phone_outlined,
+                              controller: _phoneController,
                               trailing: verificationStatus['phone']! ? const Icon(Icons.check_circle, color: Color(0xFF2FA655)) : null,
                               warning: 'Changing phone requires re-verification'),
                         ],
@@ -91,10 +368,14 @@ class _SettingsScreenState extends State<SettingsScreen> {
                       _sectionCard(
                         title: 'Address Information',
                         children: [
-                          _editableField('Address', Icons.home_outlined, '123 Main Street, Apartment 4B', maxLines: 3),
-                          _editableField('Country', Icons.public_rounded, 'United States'),
-                          _editableField('City', Icons.location_city_outlined, 'New York'),
-                          _editableField('Postcode / ZIP Code', Icons.pin_drop_outlined, '10001'),
+                          _editableField('Address', Icons.home_outlined,
+                              controller: _addressController, maxLines: 3),
+                          _editableField('Country', Icons.public_rounded,
+                              controller: _countryController),
+                          _editableField('City', Icons.location_city_outlined,
+                              controller: _cityController),
+                          _editableField('Postcode / ZIP Code', Icons.pin_drop_outlined,
+                              controller: _postcodeController),
                         ],
                       ),
                       const SizedBox(height: 16),
@@ -106,10 +387,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
                           child: const Text('Read Only', style: TextStyle(fontSize: 11, color: Color(0xFF8C867F))),
                         ),
                         children: [
-                          _readonlyField('First Name', Icons.person_outline_rounded, 'Alexander'),
-                          _readonlyField('Last Name', Icons.person_outline_rounded, 'Johnson'),
-                          _readonlyField('Gender', Icons.groups_rounded, 'Male'),
-                          _readonlyField('Date of Birth', Icons.calendar_month_outlined, 'June 15, 1995 (28 years old)'),
+                          _readonlyField('First Name', Icons.person_outline_rounded, _displayValue(_profile?.firstName ?? '')),
+                          _readonlyField('Last Name', Icons.person_outline_rounded, _displayValue(_profile?.lastName ?? '')),
+                          _readonlyField('Gender', Icons.groups_rounded, _displayValue(_profile?.gender ?? '')),
+                          _readonlyField('Date of Birth', Icons.calendar_month_outlined, _displayValue(_profile?.dateOfBirth ?? '')),
                           Container(
                             padding: const EdgeInsets.all(14),
                             decoration: BoxDecoration(
@@ -125,15 +406,37 @@ class _SettingsScreenState extends State<SettingsScreen> {
                         ],
                       ),
                       const SizedBox(height: 18),
-                      _primaryButton('Save Changes', () {}),
+                      _primaryButton('Save Changes', _saveBasicSettings),
                     ],
                     if (activeTab == 'security') ...[
                       _sectionCard(
                         title: 'Password & Security',
                         children: [
-                          _passwordField('Current Password'),
-                          _passwordField('New Password'),
-                          _passwordField('Confirm New Password'),
+                          _passwordField(
+                            'Current Password',
+                            controller: _currentPasswordController,
+                            visible: showCurrentPassword,
+                            onToggle: () => setState(
+                              () => showCurrentPassword = !showCurrentPassword,
+                            ),
+                          ),
+                          _passwordField(
+                            'New Password',
+                            controller: _newPasswordController,
+                            visible: showNewPassword,
+                            onToggle: () => setState(
+                              () => showNewPassword = !showNewPassword,
+                            ),
+                          ),
+                          _passwordField(
+                            'Confirm New Password',
+                            controller: _confirmPasswordController,
+                            visible: showConfirmPassword,
+                            onToggle: () => setState(
+                              () =>
+                                  showConfirmPassword = !showConfirmPassword,
+                            ),
+                          ),
                         ],
                       ),
                       const SizedBox(height: 16),
@@ -161,7 +464,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                         ),
                       ),
                       const SizedBox(height: 18),
-                      _primaryButton('Update Password', () {}),
+                      _primaryButton('Update Password', _changePassword),
                     ],
                     if (activeTab == 'verification') ...[
                       Container(
@@ -224,8 +527,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
                       _sectionCard(
                         title: 'Contact Verification',
                         children: [
-                          _contactVerificationTile('Email Verification', 'alex.johnson@email.com', Icons.mail_outline_rounded, verificationStatus['email']!),
-                          _contactVerificationTile('Phone Verification', '+1 (555) 123-4567', Icons.phone_outlined, verificationStatus['phone']!),
+                          _contactVerificationTile('Email Verification', _displayValue(_emailController.text), Icons.mail_outline_rounded, verificationStatus['email']!),
+                          _contactVerificationTile('Phone Verification',
+                              '${_displayValue(_phoneCountryCodeController.text)} ${_displayValue(_phoneController.text)}'.trim(), Icons.phone_outlined, verificationStatus['phone']!),
                         ],
                       ),
                       const SizedBox(height: 16),
@@ -311,7 +615,12 @@ class _SettingsScreenState extends State<SettingsScreen> {
     );
   }
 
-  Widget _editableField(String label, IconData icon, String initialValue, {Widget? trailing, String? helper, String? warning, int maxLines = 1}) {
+  Widget _editableField(String label, IconData icon,
+      {required TextEditingController controller,
+      Widget? trailing,
+      String? helper,
+      String? warning,
+      int maxLines = 1}) {
     return Padding(
       padding: const EdgeInsets.only(bottom: 14),
       child: Column(
@@ -333,7 +642,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 ),
                 Expanded(
                   child: TextFormField(
-                    initialValue: initialValue,
+                    controller: controller,
                     maxLines: maxLines,
                     decoration: const InputDecoration(border: InputBorder.none),
                   ),
@@ -390,7 +699,12 @@ class _SettingsScreenState extends State<SettingsScreen> {
     );
   }
 
-  Widget _passwordField(String label) {
+  Widget _passwordField(
+    String label, {
+    required TextEditingController controller,
+    required bool visible,
+    required VoidCallback onToggle,
+  }) {
     return Padding(
       padding: const EdgeInsets.only(bottom: 14),
       child: Column(
@@ -411,13 +725,14 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 ),
                 Expanded(
                   child: TextField(
-                    obscureText: !showPassword,
+                    controller: controller,
+                    obscureText: !visible,
                     decoration: InputDecoration(border: InputBorder.none, hintText: 'Enter $label'),
                   ),
                 ),
                 IconButton(
-                  onPressed: () => setState(() => showPassword = !showPassword),
-                  icon: Icon(showPassword ? Icons.visibility_off_rounded : Icons.visibility_rounded, color: const Color(0xFFAAA39C)),
+                  onPressed: onToggle,
+                  icon: Icon(visible ? Icons.visibility_off_rounded : Icons.visibility_rounded, color: const Color(0xFFAAA39C)),
                 ),
               ],
             ),

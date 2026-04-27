@@ -11,15 +11,23 @@
 
 import 'dart:io';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:image_picker/image_picker.dart';
 
+import '../../core/services/auth_service.dart';
+import '../../core/services/talent_profile_service.dart';
 import '../../shared/demo_schedule_store.dart';
+import '../shared/loading_splash.dart';
 import '../shared/review_composer_sheet.dart';
 import 'talent_ui_shared.dart';
 
 class TalentProfileScreen extends StatefulWidget {
-  const TalentProfileScreen({Key? key}) : super(key: key);
+  const TalentProfileScreen({Key? key, this.showBottomNav = true})
+    : super(key: key);
+
+  final bool showBottomNav;
 
   @override
   State<TalentProfileScreen> createState() => _TalentProfileScreenState();
@@ -29,6 +37,9 @@ class _TalentProfileScreenState extends State<TalentProfileScreen> {
   // TODO: Ambil data profile talent dari backend
   static const String _currentTalentHostName = 'Clara';
   static const int _totalEarnedCoins = 45230;
+  static const int _maxPortfolioPhotos = 5;
+  static const String _defaultTalentAvatarUrl =
+      'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=200';
   static const List<_ReadyToReviewUser> _seedReadyToReviewUsers = [
     _ReadyToReviewUser(
       name: 'Sarah Johnson',
@@ -52,26 +63,12 @@ class _TalentProfileScreenState extends State<TalentProfileScreen> {
   int coinBalance = 4580;
   double rating = 4.8;
   int reviews = 234;
+  String _displayName = 'Talent';
+  String _email = '-';
   _TalentPhoto profilePhoto = const _TalentPhoto.network(
-    'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=200',
+    _defaultTalentAvatarUrl,
   );
-  List<_TalentPhoto> portfolioPhotos = const [
-    _TalentPhoto.network(
-      'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=400',
-    ),
-    _TalentPhoto.network(
-      'https://images.unsplash.com/photo-1762343040706-b74ea936c1c0?w=400',
-    ),
-    _TalentPhoto.network(
-      'https://images.unsplash.com/photo-1773955779694-42b1fba71f72?w=400',
-    ),
-    _TalentPhoto.network(
-      'https://images.unsplash.com/photo-1675275372275-0a5e5f0a9fa6?w=400',
-    ),
-    _TalentPhoto.network(
-      'https://images.unsplash.com/photo-1758467796950-1da4615c97b5?w=400',
-    ),
-  ];
+  List<_TalentPhoto> portfolioPhotos = const [];
 
   @override
   void initState() {
@@ -82,46 +79,502 @@ class _TalentProfileScreenState extends State<TalentProfileScreen> {
     _paymentHistoryItems = List<_PaymentHistoryItem>.from(
       _TalentPaymentHistorySheet.seedItems,
     );
+    final cachedProfile = TalentProfileService.peekCachedMyProfile();
+    if (cachedProfile != null) {
+      _applyProfile(cachedProfile);
+    }
+    _loadProfile();
+  }
+
+  void _applyProfile(TalentProfileData profile) {
+    final fullName = [profile.firstName, profile.lastName]
+        .where((part) => part.trim().isNotEmpty)
+        .join(' ')
+        .trim();
+
+    isOnline = profile.isOnline;
+    rating = profile.averageRating;
+    _displayName = fullName.isNotEmpty
+        ? fullName
+        : (profile.stageName.isNotEmpty ? profile.stageName : 'Talent');
+    _email = profile.email.isNotEmpty ? profile.email : '-';
+    if (profile.avatarUrl.isNotEmpty) {
+      profilePhoto = _TalentPhoto.network(profile.avatarUrl);
+    }
+    portfolioPhotos = _mapPortfolioPhotos(profile.portfolioPhotos);
+  }
+
+  Future<void> _loadProfile({bool forceRefresh = false}) async {
+    try {
+      final profile = await TalentProfileService.getMyProfile(
+        forceRefresh: forceRefresh,
+      );
+
+      if (!mounted) {
+        return;
+      }
+
+      setState(() {
+        _applyProfile(profile);
+      });
+    } catch (_) {
+      if (!mounted) {
+        return;
+      }
+    }
+  }
+
+  Future<void> _refreshProfileData() async {
+    try {
+      final profile = await TalentProfileService.refreshRelatedData();
+
+      if (!mounted) {
+        return;
+      }
+
+      setState(() {
+        _applyProfile(profile);
+      });
+    } catch (_) {
+      await _loadProfile(forceRefresh: true);
+    }
+  }
+
+  List<_TalentPhoto> _mapPortfolioPhotos(List<TalentPortfolioPhoto> photos) {
+    return photos
+        .map(
+          (photo) => _TalentPhoto.network(
+            photo.url,
+            mediaId: photo.mediaId,
+          ),
+        )
+        .toList(growable: false);
   }
 
   Future<void> _pickPortfolioPhoto() async {
-    final pickedFile = await _imagePicker.pickImage(
-      source: ImageSource.gallery,
-      imageQuality: 88,
-    );
+    final scaffoldMessenger = ScaffoldMessenger.of(context);
+
+    if (portfolioPhotos.length >= _maxPortfolioPhotos) {
+      scaffoldMessenger.showSnackBar(
+        const SnackBar(
+          content: Text(
+            'Maksimal 5 foto portfolio. Hapus foto dulu untuk menambah foto baru.',
+          ),
+        ),
+      );
+      return;
+    }
+
+    XFile? pickedFile;
+    try {
+      pickedFile = await _imagePicker.pickImage(
+        source: ImageSource.gallery,
+        imageQuality: 88,
+      );
+    } on PlatformException catch (error) {
+      if (!mounted) {
+        return;
+      }
+      scaffoldMessenger.showSnackBar(
+        SnackBar(
+          content: Text(error.message ?? 'Akses galeri tidak tersedia.'),
+        ),
+      );
+      return;
+    } catch (_) {
+      if (!mounted) {
+        return;
+      }
+      scaffoldMessenger.showSnackBar(
+        const SnackBar(
+          content: Text('Gagal membuka galeri di perangkat ini.'),
+        ),
+      );
+      return;
+    }
 
     if (pickedFile == null || !mounted) {
       return;
     }
 
-    setState(() {
-      portfolioPhotos = [
-        _TalentPhoto.file(pickedFile.path),
-        ...portfolioPhotos,
-      ];
-    });
+    final selectedFile = pickedFile;
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) {
+        return AlertDialog(
+          title: const Text('Add Portfolio Photo'),
+          content: const Text('Tambahkan foto ini ke portfolio Anda?'),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(dialogContext).pop(false),
+              child: const Text('Cancel'),
+            ),
+            TextButton(
+              onPressed: () => Navigator.of(dialogContext).pop(true),
+              child: const Text('Add Photo'),
+            ),
+          ],
+        );
+      },
+    );
 
-    ScaffoldMessenger.of(
-      context,
-    ).showSnackBar(const SnackBar(content: Text('Photo added to portfolio.')));
+    if (confirmed != true || !mounted) {
+      return;
+    }
+
+    try {
+      final profile = await AppLoadingOverlay.of(context).run<TalentProfileData>(
+        () => TalentProfileService.uploadPortfolioPhoto(selectedFile.path),
+        message: 'Mengunggah foto portfolio...',
+      );
+
+      if (!mounted) {
+        return;
+      }
+
+      setState(() {
+        portfolioPhotos = _mapPortfolioPhotos(profile.portfolioPhotos);
+      });
+
+      scaffoldMessenger.showSnackBar(
+        const SnackBar(content: Text('Foto portfolio berhasil ditambahkan.')),
+      );
+    } on AuthServiceException catch (error) {
+      if (!mounted) {
+        return;
+      }
+      scaffoldMessenger.showSnackBar(SnackBar(content: Text(error.message)));
+    } catch (_) {
+      if (!mounted) {
+        return;
+      }
+      scaffoldMessenger.showSnackBar(
+        const SnackBar(
+          content: Text('Gagal menambahkan foto portfolio. Coba lagi.'),
+        ),
+      );
+    }
+  }
+
+  Future<bool> _deletePortfolioPhotoAt(int index) async {
+    if (index < 0 || index >= portfolioPhotos.length) {
+      return false;
+    }
+
+    final scaffoldMessenger = ScaffoldMessenger.of(context);
+    final photo = portfolioPhotos[index];
+    if (photo.mediaId.isEmpty) {
+      scaffoldMessenger.showSnackBar(
+        const SnackBar(
+          content: Text('Foto ini belum memiliki media id dari backend.'),
+        ),
+      );
+      return false;
+    }
+
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) {
+        return AlertDialog(
+          title: const Text('Delete Portfolio Photo'),
+          content: const Text('Hapus foto ini dari portfolio Anda?'),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(dialogContext).pop(false),
+              child: const Text('Cancel'),
+            ),
+            TextButton(
+              onPressed: () => Navigator.of(dialogContext).pop(true),
+              child: const Text('Delete'),
+            ),
+          ],
+        );
+      },
+    );
+
+    if (confirmed != true || !mounted) {
+      return false;
+    }
+
+    try {
+      final profile = await AppLoadingOverlay.of(context).run<TalentProfileData>(
+        () => TalentProfileService.deletePortfolioPhoto(photo.mediaId),
+        message: 'Menghapus foto portfolio...',
+      );
+
+      if (!mounted) {
+        return false;
+      }
+
+      setState(() {
+        portfolioPhotos = _mapPortfolioPhotos(profile.portfolioPhotos);
+      });
+
+      scaffoldMessenger.showSnackBar(
+        const SnackBar(content: Text('Foto portfolio berhasil dihapus.')),
+      );
+      return true;
+    } on AuthServiceException catch (error) {
+      if (!mounted) {
+        return false;
+      }
+      scaffoldMessenger.showSnackBar(SnackBar(content: Text(error.message)));
+    } catch (_) {
+      if (!mounted) {
+        return false;
+      }
+      scaffoldMessenger.showSnackBar(
+        const SnackBar(
+          content: Text('Gagal menghapus foto portfolio. Coba lagi.'),
+        ),
+      );
+    }
+
+    return false;
   }
 
   Future<void> _pickProfilePhoto() async {
-    final pickedFile = await _imagePicker.pickImage(
-      source: ImageSource.gallery,
-      imageQuality: 88,
+    final source = await _selectProfilePhotoSource();
+    if (source == null || !mounted) {
+      return;
+    }
+
+    await _pickProfilePhotoFromSource(source);
+  }
+
+  Future<ImageSource?> _selectProfilePhotoSource() {
+    final showCameraOption = _supportsCameraOption();
+
+    return showModalBottomSheet<ImageSource>(
+      context: context,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      ),
+      builder: (context) {
+        return SafeArea(
+          top: false,
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(20, 20, 20, 28),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                if (showCameraOption)
+                  ListTile(
+                    contentPadding: EdgeInsets.zero,
+                    leading: const CircleAvatar(
+                      backgroundColor: Color(0xFFFFF1E3),
+                      child: Icon(Icons.photo_camera_rounded),
+                    ),
+                    title: const Text('Open Camera'),
+                    subtitle: const Text('Take a new profile photo'),
+                    onTap: () => Navigator.pop(context, ImageSource.camera),
+                  )
+                else
+                  const ListTile(
+                    contentPadding: EdgeInsets.zero,
+                    leading: CircleAvatar(
+                      backgroundColor: Color(0xFFF2ECE4),
+                      child: Icon(
+                        Icons.photo_camera_rounded,
+                        color: Color(0xFF9A8F82),
+                      ),
+                    ),
+                    title: Text('Open Camera'),
+                    subtitle: Text(
+                      'Sementara hanya tersedia di Android atau perangkat fisik yang sudah diverifikasi.',
+                    ),
+                  ),
+                ListTile(
+                  contentPadding: EdgeInsets.zero,
+                  leading: const CircleAvatar(
+                    backgroundColor: Color(0xFFFFF1E3),
+                    child: Icon(Icons.photo_library_rounded),
+                  ),
+                  title: const Text('Get from Device'),
+                  subtitle: const Text('Choose a photo from your device'),
+                  onTap: () => Navigator.pop(context, ImageSource.gallery),
+                ),
+              ],
+            ),
+          ),
+        );
+      },
     );
+  }
+
+  Future<void> _pickProfilePhotoFromSource(ImageSource source) async {
+    final scaffoldMessenger = ScaffoldMessenger.of(context);
+
+    XFile? pickedFile;
+    try {
+      pickedFile = await _imagePicker.pickImage(
+        source: source,
+        imageQuality: 88,
+      );
+    } on PlatformException catch (error) {
+      if (!mounted) {
+        return;
+      }
+      scaffoldMessenger.showSnackBar(
+        SnackBar(
+          content: Text(
+            error.message ?? 'Akses kamera atau galeri tidak tersedia.',
+          ),
+        ),
+      );
+      return;
+    } catch (_) {
+      if (!mounted) {
+        return;
+      }
+      scaffoldMessenger.showSnackBar(
+        const SnackBar(
+          content: Text('Gagal membuka kamera atau galeri di perangkat ini.'),
+        ),
+      );
+      return;
+    }
 
     if (pickedFile == null || !mounted) {
       return;
     }
 
-    setState(() {
-      profilePhoto = _TalentPhoto.file(pickedFile.path);
-    });
+    final selectedFile = pickedFile;
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) {
+        return AlertDialog(
+          title: const Text('Confirm Photo Upload'),
+          content: const Text('Gunakan foto ini sebagai foto profil Anda?'),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(dialogContext).pop(false),
+              child: const Text('Cancel'),
+            ),
+            TextButton(
+              onPressed: () => Navigator.of(dialogContext).pop(true),
+              child: const Text('Confirm'),
+            ),
+          ],
+        );
+      },
+    );
+
+    if (confirmed != true || !mounted) {
+      return;
+    }
+
+    try {
+      final profile = await AppLoadingOverlay.of(context).run<TalentProfileData>(
+        () => TalentProfileService.uploadAvatar(selectedFile.path),
+        message: 'Mengunggah foto profil...',
+      );
+
+      if (!mounted) {
+        return;
+      }
+
+      setState(() {
+        profilePhoto = profile.avatarUrl.isNotEmpty
+            ? _TalentPhoto.network(profile.avatarUrl)
+            : _TalentPhoto.file(selectedFile.path);
+      });
+
+      scaffoldMessenger.showSnackBar(
+        const SnackBar(content: Text('Foto profil berhasil diperbarui.')),
+      );
+    } on AuthServiceException catch (error) {
+      if (!mounted) {
+        return;
+      }
+      scaffoldMessenger.showSnackBar(SnackBar(content: Text(error.message)));
+    } catch (_) {
+      if (!mounted) {
+        return;
+      }
+      scaffoldMessenger.showSnackBar(
+        const SnackBar(
+          content: Text('Gagal mengunggah foto profil. Coba lagi.'),
+        ),
+      );
+    }
+  }
+
+  bool _supportsCameraOption() {
+    if (kIsWeb) {
+      return false;
+    }
+
+    return Platform.isAndroid || Platform.isIOS;
+  }
+
+  Future<void> _openProfilePhotoPreview() async {
+    await showDialog<void>(
+      context: context,
+      barrierDismissible: true,
+      barrierColor: Colors.black.withValues(alpha: 0.92),
+      builder: (dialogContext) {
+        return Dialog.fullscreen(
+          backgroundColor: Colors.black,
+          child: SafeArea(
+            child: Stack(
+              children: [
+                Center(
+                  child: InteractiveViewer(
+                    minScale: 1,
+                    maxScale: 4,
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 24),
+                      child: profilePhoto.buildImage(fit: BoxFit.contain),
+                    ),
+                  ),
+                ),
+                Positioned(
+                  top: 12,
+                  left: 12,
+                  child: IconButton(
+                    onPressed: () => Navigator.of(dialogContext).pop(),
+                    icon: const Icon(
+                      Icons.close_rounded,
+                      color: Colors.white,
+                      size: 30,
+                    ),
+                  ),
+                ),
+                Positioned(
+                  right: 24,
+                  bottom: 28,
+                  left: 24,
+                  child: FilledButton.icon(
+                    onPressed: () async {
+                      Navigator.of(dialogContext).pop();
+                      await _pickProfilePhoto();
+                    },
+                    icon: const Icon(Icons.photo_camera_back_rounded),
+                    label: const Text('Change Photo'),
+                    style: FilledButton.styleFrom(
+                      backgroundColor: talentAmber,
+                      foregroundColor: Colors.white,
+                      minimumSize: const Size.fromHeight(54),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(18),
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
   }
 
   Future<void> _openPortfolioPreview(int initialIndex) async {
+    if (portfolioPhotos.isEmpty) {
+      return;
+    }
+
     final controller = PageController(initialPage: initialIndex);
     int currentIndex = initialIndex;
 
@@ -133,13 +586,17 @@ class _TalentProfileScreenState extends State<TalentProfileScreen> {
       pageBuilder: (context, _, __) {
         return StatefulBuilder(
           builder: (context, setModalState) {
+            final photoCount = portfolioPhotos.length;
+            final currentPhoto = portfolioPhotos[currentIndex];
+            final canAddMorePhotos = photoCount < _maxPortfolioPhotos;
+
             return SafeArea(
               child: Stack(
                 children: [
                   Center(
                     child: PageView.builder(
                       controller: controller,
-                      itemCount: portfolioPhotos.length,
+                      itemCount: photoCount,
                       onPageChanged: (index) =>
                           setModalState(() => currentIndex = index),
                       itemBuilder: (context, index) {
@@ -171,7 +628,7 @@ class _TalentProfileScreenState extends State<TalentProfileScreen> {
                             borderRadius: BorderRadius.circular(999),
                           ),
                           child: Text(
-                            '${currentIndex + 1} / ${portfolioPhotos.length}',
+                            '${currentIndex + 1} / $photoCount',
                             style: const TextStyle(
                               color: Colors.white,
                               fontWeight: FontWeight.w700,
@@ -184,6 +641,73 @@ class _TalentProfileScreenState extends State<TalentProfileScreen> {
                             Icons.close_rounded,
                             color: Colors.white,
                             size: 30,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  Positioned(
+                    right: 20,
+                    bottom: 28,
+                    left: 20,
+                    child: Row(
+                      children: [
+                        if (canAddMorePhotos)
+                          Expanded(
+                            child: OutlinedButton.icon(
+                              onPressed: () async {
+                                Navigator.of(context).pop();
+                                await _pickPortfolioPhoto();
+                              },
+                              icon: const Icon(
+                                Icons.add_photo_alternate_outlined,
+                              ),
+                              label: const Text('Add Photo'),
+                              style: OutlinedButton.styleFrom(
+                                foregroundColor: Colors.white,
+                                side: BorderSide(
+                                  color: Colors.white.withValues(alpha: 0.7),
+                                ),
+                                backgroundColor: Colors.white.withValues(
+                                  alpha: 0.08,
+                                ),
+                                minimumSize: const Size.fromHeight(54),
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(18),
+                                ),
+                              ),
+                            ),
+                          ),
+                        if (canAddMorePhotos) const SizedBox(width: 12),
+                        Expanded(
+                          child: FilledButton.icon(
+                            onPressed: currentPhoto.mediaId.isEmpty
+                                ? null
+                                : () async {
+                                    final deleted =
+                                        await _deletePortfolioPhotoAt(
+                                          currentIndex,
+                                        );
+                                    if (deleted && mounted) {
+                                      Navigator.of(context).pop();
+                                    }
+                                  },
+                            icon: const Icon(Icons.delete_outline_rounded),
+                            label: Text(
+                              currentPhoto.mediaId.isEmpty
+                                  ? 'Delete Unavailable'
+                                  : 'Delete Photo',
+                            ),
+                            style: FilledButton.styleFrom(
+                              backgroundColor: const Color(0xFFD94841),
+                              foregroundColor: Colors.white,
+                              disabledBackgroundColor: Colors.white24,
+                              disabledForegroundColor: Colors.white70,
+                              minimumSize: const Size.fromHeight(54),
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(18),
+                              ),
+                            ),
                           ),
                         ),
                       ],
@@ -317,15 +841,18 @@ class _TalentProfileScreenState extends State<TalentProfileScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: const Color(0xFFFFF8E1),
-      bottomNavigationBar: const TalentBottomNav(
-        currentRoute: '/talent-profile',
-      ),
+      bottomNavigationBar: widget.showBottomNav
+          ? const TalentBottomNav(currentRoute: '/talent-profile')
+          : null,
       body: Stack(
         children: [
-          SingleChildScrollView(
-            padding: EdgeInsets.zero,
-            child: Column(
-              children: [
+          RefreshIndicator(
+            onRefresh: _refreshProfileData,
+            child: SingleChildScrollView(
+              physics: const AlwaysScrollableScrollPhysics(),
+              padding: EdgeInsets.zero,
+              child: Column(
+                children: [
                 // Header
                 Container(
                   decoration: const BoxDecoration(
@@ -353,7 +880,7 @@ class _TalentProfileScreenState extends State<TalentProfileScreen> {
                       IconButton(
                         icon: const Icon(Icons.settings, color: Colors.white),
                         onPressed: () {
-                          Navigator.pushNamed(context, '/talent-settings');
+                          navigateToTalentTab(context, '/talent-settings');
                         },
                       ),
                     ],
@@ -380,9 +907,12 @@ class _TalentProfileScreenState extends State<TalentProfileScreen> {
                           children: [
                             Stack(
                               children: [
-                                CircleAvatar(
-                                  radius: 40,
-                                  backgroundImage: profilePhoto.provider,
+                                GestureDetector(
+                                  onTap: _openProfilePhotoPreview,
+                                  child: CircleAvatar(
+                                    radius: 40,
+                                    backgroundImage: profilePhoto.provider,
+                                  ),
                                 ),
                                 Positioned(
                                   bottom: 0,
@@ -436,12 +966,12 @@ class _TalentProfileScreenState extends State<TalentProfileScreen> {
                                 children: [
                                   Row(
                                     children: [
-                                      const Expanded(
+                                      Expanded(
                                         child: Text(
-                                          'Jessica Martinez',
+                                          _displayName,
                                           maxLines: 1,
                                           overflow: TextOverflow.ellipsis,
-                                          style: TextStyle(
+                                          style: const TextStyle(
                                             fontSize: 20,
                                             fontWeight: FontWeight.bold,
                                           ),
@@ -463,11 +993,11 @@ class _TalentProfileScreenState extends State<TalentProfileScreen> {
                                       ),
                                     ],
                                   ),
-                                  const Text(
-                                    'jessica.martinez@email.com',
+                                  Text(
+                                    _email,
                                     maxLines: 1,
                                     overflow: TextOverflow.ellipsis,
-                                    style: TextStyle(
+                                    style: const TextStyle(
                                       color: Colors.black54,
                                       fontSize: 14,
                                     ),
@@ -588,43 +1118,92 @@ class _TalentProfileScreenState extends State<TalentProfileScreen> {
                               ],
                             ),
                             TextButton(
-                              onPressed: _pickPortfolioPhoto,
-                              child: const Text(
-                                '+ Add Photos',
-                                style: TextStyle(color: Colors.amber),
+                              onPressed:
+                                  portfolioPhotos.length < _maxPortfolioPhotos
+                                  ? _pickPortfolioPhoto
+                                  : null,
+                              child: Text(
+                                portfolioPhotos.length < _maxPortfolioPhotos
+                                    ? '+ Add Photos'
+                                    : 'Max 5 Photos',
+                                style: const TextStyle(color: Colors.amber),
                               ),
                             ),
                           ],
                         ),
                         const SizedBox(height: 8),
-                        SizedBox(
-                          height: 70,
-                          child: ListView.separated(
-                            scrollDirection: Axis.horizontal,
-                            itemCount: portfolioPhotos.length,
-                            separatorBuilder: (context, idx) =>
-                                const SizedBox(width: 8),
-                            itemBuilder: (context, idx) {
-                              final photo = portfolioPhotos[idx];
-                              return InkWell(
-                                onTap: () => _openPortfolioPreview(idx),
-                                borderRadius: BorderRadius.circular(12),
-                                child: ClipRRect(
-                                  borderRadius: BorderRadius.circular(12),
-                                  child: SizedBox(
-                                    width: 70,
-                                    height: 70,
-                                    child: photo.buildImage(fit: BoxFit.cover),
+                        if (portfolioPhotos.isEmpty)
+                          Container(
+                            width: double.infinity,
+                            padding: const EdgeInsets.all(16),
+                            decoration: BoxDecoration(
+                              color: const Color(0xFFFFF8EE),
+                              borderRadius: BorderRadius.circular(16),
+                              border: Border.all(
+                                color: const Color(0xFFF2DFC1),
+                              ),
+                            ),
+                            child: Column(
+                              children: [
+                                const Icon(
+                                  Icons.photo_library_outlined,
+                                  color: Colors.amber,
+                                  size: 28,
+                                ),
+                                const SizedBox(height: 8),
+                                const Text(
+                                  'Belum ada foto portfolio',
+                                  style: TextStyle(fontWeight: FontWeight.w700),
+                                ),
+                                const SizedBox(height: 4),
+                                const Text(
+                                  'Tambahkan hingga 5 foto untuk ditampilkan di profil Anda.',
+                                  textAlign: TextAlign.center,
+                                  style: TextStyle(
+                                    fontSize: 12,
+                                    color: Colors.black54,
                                   ),
                                 ),
-                              );
-                            },
+                                const SizedBox(height: 12),
+                                OutlinedButton.icon(
+                                  onPressed: _pickPortfolioPhoto,
+                                  icon: const Icon(
+                                    Icons.add_photo_alternate_outlined,
+                                  ),
+                                  label: const Text('Add Photo'),
+                                ),
+                              ],
+                            ),
+                          )
+                        else
+                          SizedBox(
+                            height: 70,
+                            child: ListView.separated(
+                              scrollDirection: Axis.horizontal,
+                              itemCount: portfolioPhotos.length,
+                              separatorBuilder: (context, idx) =>
+                                  const SizedBox(width: 8),
+                              itemBuilder: (context, idx) {
+                                final photo = portfolioPhotos[idx];
+                                return InkWell(
+                                  onTap: () => _openPortfolioPreview(idx),
+                                  borderRadius: BorderRadius.circular(12),
+                                  child: ClipRRect(
+                                    borderRadius: BorderRadius.circular(12),
+                                    child: SizedBox(
+                                      width: 70,
+                                      height: 70,
+                                      child: photo.buildImage(fit: BoxFit.cover),
+                                    ),
+                                  ),
+                                );
+                              },
+                            ),
                           ),
-                        ),
                         Padding(
                           padding: const EdgeInsets.only(top: 8),
                           child: Text(
-                            '${portfolioPhotos.length} photos • Users can view your portfolio on your profile',
+                            '${portfolioPhotos.length} / $_maxPortfolioPhotos photos • Users can view your portfolio on your profile',
                             style: const TextStyle(
                               fontSize: 12,
                               color: Colors.black54,
@@ -745,7 +1324,7 @@ class _TalentProfileScreenState extends State<TalentProfileScreen> {
                           'Settings',
                           'Privacy & preferences',
                           onTap: () {
-                            Navigator.pushNamed(context, '/talent-settings');
+                            navigateToTalentTab(context, '/talent-settings');
                           },
                         ),
                       ],
@@ -779,7 +1358,8 @@ class _TalentProfileScreenState extends State<TalentProfileScreen> {
                     ),
                   ),
                 ),
-              ],
+                ],
+              ),
             ),
           ),
         ],
@@ -887,12 +1467,16 @@ class _ReadyToReviewUser {
 }
 
 class _TalentPhoto {
-  const _TalentPhoto.network(this.value) : isLocal = false;
+  const _TalentPhoto.network(this.value, {this.mediaId = ''})
+    : isLocal = false;
 
-  const _TalentPhoto.file(this.value) : isLocal = true;
+  const _TalentPhoto.file(this.value)
+    : isLocal = true,
+      mediaId = '';
 
   final String value;
   final bool isLocal;
+  final String mediaId;
 
   ImageProvider get provider {
     if (isLocal) {

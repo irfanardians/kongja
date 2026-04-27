@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../shared/demo_schedule_store.dart';
 import '../shared/activity_session_screen.dart';
+import '../shared/loading_splash.dart';
 import 'talent_chat_screen.dart';
 import 'talent_ui_shared.dart';
 
@@ -38,7 +39,9 @@ class _TalentActivity {
 }
 
 class TalentMessagesScreen extends StatefulWidget {
-  const TalentMessagesScreen({Key? key}) : super(key: key);
+  const TalentMessagesScreen({super.key, this.showBottomNav = true});
+
+  final bool showBottomNav;
 
   @override
   State<TalentMessagesScreen> createState() => _TalentMessagesScreenState();
@@ -56,7 +59,8 @@ class _TalentMessagesScreenState extends State<TalentMessagesScreen> {
       name: 'Sarah Johnson',
       message: 'Thank you for the chat!',
       time: '2 min ago',
-      avatar: 'https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=100',
+      avatar:
+          'https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=100',
       unread: 2,
       status: 'active',
       lastEarning: '50 coins',
@@ -68,7 +72,8 @@ class _TalentMessagesScreenState extends State<TalentMessagesScreen> {
       name: 'Mike Chen',
       message: 'Phone call still running.',
       time: '15 min ago',
-      avatar: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=100',
+      avatar:
+          'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=100',
       unread: 1,
       status: 'active',
       lastEarning: '35 coins',
@@ -80,7 +85,8 @@ class _TalentMessagesScreenState extends State<TalentMessagesScreen> {
       name: 'Emma Wilson',
       message: 'Video session is live now.',
       time: '1 hr ago',
-      avatar: 'https://images.unsplash.com/photo-1438761681033-6461ffad8d80?w=100',
+      avatar:
+          'https://images.unsplash.com/photo-1438761681033-6461ffad8d80?w=100',
       unread: 0,
       status: 'active',
       lastEarning: '120 coins',
@@ -92,7 +98,8 @@ class _TalentMessagesScreenState extends State<TalentMessagesScreen> {
       name: 'David Lee',
       message: 'See you next time!',
       time: '2 hrs ago',
-      avatar: 'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?w=100',
+      avatar:
+          'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?w=100',
       unread: 0,
       status: 'archived',
       lastEarning: '80 coins',
@@ -118,36 +125,41 @@ class _TalentMessagesScreenState extends State<TalentMessagesScreen> {
   }
 
   List<_TalentActivity> _scheduleActivities() {
-    final acceptedRequests = demoScheduleStore
-        .requestsForHost(_currentTalentHostName)
-        .where((request) => request.status == DemoMeetRequestStatus.accepted)
-        .toList()
-      ..sort((a, b) => b.date.compareTo(a.date));
+    final acceptedRequests =
+        demoScheduleStore
+            .requestsForHost(_currentTalentHostName)
+            .where(
+              (request) => request.status == DemoMeetRequestStatus.accepted,
+            )
+            .toList()
+          ..sort((a, b) => b.date.compareTo(a.date));
 
-    return acceptedRequests.map((request) {
-      final isActive = demoScheduleStore.canHostOpenEventChat(
-        hostName: _currentTalentHostName,
-        userName: request.userName,
-      );
+    return acceptedRequests
+        .map((request) {
+          final isActive = demoScheduleStore.canHostOpenEventChat(
+            hostName: _currentTalentHostName,
+            userName: request.userName,
+          );
 
-      return _TalentActivity(
-        id: 1000 + request.id,
-        name: request.userName,
-        message:
-            'Schedule chat for ${request.eventType} on ${request.dateLabel} at ${request.startTimeLabel}.',
-        time: request.requestedAtLabel,
-        avatar: request.userAvatar,
-        unread: isActive ? 1 : 0,
-        status: isActive ? 'active' : 'archived',
-        lastEarning: '${request.coins} coins',
-        type: _TalentActivityType.message,
-        countryCode: request.countryCode,
-        isScheduleMessage: true,
-        remainingLabel: isActive
-            ? 'Chat tersedia H-3 sampai H+1 acara'
-            : null,
-      );
-    }).toList(growable: false);
+          return _TalentActivity(
+            id: 1000 + request.id,
+            name: request.userName,
+            message:
+                'Schedule chat for ${request.eventType} on ${request.dateLabel} at ${request.startTimeLabel}.',
+            time: request.requestedAtLabel,
+            avatar: request.userAvatar,
+            unread: isActive ? 1 : 0,
+            status: isActive ? 'active' : 'archived',
+            lastEarning: '${request.coins} coins',
+            type: _TalentActivityType.message,
+            countryCode: request.countryCode,
+            isScheduleMessage: true,
+            remainingLabel: isActive
+                ? 'Chat tersedia H-3 sampai H+1 acara'
+                : null,
+          );
+        })
+        .toList(growable: false);
   }
 
   Future<void> _handleActivityTap(_TalentActivity activity) async {
@@ -167,7 +179,8 @@ class _TalentMessagesScreenState extends State<TalentMessagesScreen> {
     switch (activity.type) {
       case _TalentActivityType.message:
         await Navigator.of(context).push(
-          MaterialPageRoute<void>(
+          buildLoadingSplashRoute<void>(
+            settings: const RouteSettings(name: '/talent-chat-session'),
             builder: (context) => TalentChatScreen(
               userName: activity.name,
               userAvatar: activity.avatar,
@@ -179,7 +192,8 @@ class _TalentMessagesScreenState extends State<TalentMessagesScreen> {
         );
       case _TalentActivityType.phone:
         await Navigator.of(context).push(
-          MaterialPageRoute<void>(
+          buildLoadingSplashRoute<void>(
+            settings: const RouteSettings(name: '/talent-phone-session'),
             builder: (context) => ActivitySessionScreen(
               peerName: activity.name,
               peerAvatar: activity.avatar,
@@ -192,7 +206,8 @@ class _TalentMessagesScreenState extends State<TalentMessagesScreen> {
         );
       case _TalentActivityType.video:
         await Navigator.of(context).push(
-          MaterialPageRoute<void>(
+          buildLoadingSplashRoute<void>(
+            settings: const RouteSettings(name: '/talent-video-session'),
             builder: (context) => ActivitySessionScreen(
               peerName: activity.name,
               peerAvatar: activity.avatar,
@@ -251,7 +266,7 @@ class _TalentMessagesScreenState extends State<TalentMessagesScreen> {
   Widget build(BuildContext context) {
     return ValueListenableBuilder<List<DemoMeetRequest>>(
       valueListenable: demoScheduleStore,
-      builder: (context, _, __) {
+      builder: (context, value, child) {
         final query = _searchController.text.toLowerCase();
         final allActivities = [..._scheduleActivities(), ...activities];
         final filtered = allActivities.where((activity) {
@@ -266,7 +281,9 @@ class _TalentMessagesScreenState extends State<TalentMessagesScreen> {
 
         return Scaffold(
           backgroundColor: talentBg,
-          bottomNavigationBar: const TalentBottomNav(currentRoute: '/talent-messages'),
+          bottomNavigationBar: widget.showBottomNav
+              ? const TalentBottomNav(currentRoute: '/talent-messages')
+              : null,
           body: SafeArea(
             bottom: false,
             child: Stack(
@@ -280,7 +297,9 @@ class _TalentMessagesScreenState extends State<TalentMessagesScreen> {
                           begin: Alignment.topLeft,
                           end: Alignment.bottomRight,
                         ),
-                        borderRadius: BorderRadius.vertical(bottom: Radius.circular(32)),
+                        borderRadius: BorderRadius.vertical(
+                          bottom: Radius.circular(32),
+                        ),
                       ),
                       padding: const EdgeInsets.fromLTRB(24, 24, 24, 28),
                       child: Column(
@@ -288,7 +307,11 @@ class _TalentMessagesScreenState extends State<TalentMessagesScreen> {
                         children: [
                           const Text(
                             'Activity',
-                            style: TextStyle(color: Colors.white, fontSize: 28, fontWeight: FontWeight.w700),
+                            style: TextStyle(
+                              color: Colors.white,
+                              fontSize: 28,
+                              fontWeight: FontWeight.w700,
+                            ),
                           ),
                           const SizedBox(height: 16),
                           TextField(
@@ -296,7 +319,10 @@ class _TalentMessagesScreenState extends State<TalentMessagesScreen> {
                             onChanged: (_) => setState(() {}),
                             decoration: InputDecoration(
                               hintText: 'Search activity...',
-                              prefixIcon: const Icon(Icons.search_rounded, color: Color(0xFFA79F97)),
+                              prefixIcon: const Icon(
+                                Icons.search_rounded,
+                                color: Color(0xFFA79F97),
+                              ),
                               filled: true,
                               fillColor: Colors.white,
                               border: OutlineInputBorder(
@@ -335,7 +361,8 @@ class _TalentMessagesScreenState extends State<TalentMessagesScreen> {
                           : ListView.separated(
                               padding: const EdgeInsets.fromLTRB(24, 0, 24, 24),
                               itemCount: filtered.length,
-                              separatorBuilder: (_, __) => const SizedBox(height: 14),
+                              separatorBuilder: (context, index) =>
+                                  const SizedBox(height: 14),
                               itemBuilder: (context, index) {
                                 final activity = filtered[index];
                                 final typeColor = _typeColor(activity.type);
@@ -350,14 +377,35 @@ class _TalentMessagesScreenState extends State<TalentMessagesScreen> {
                                         Stack(
                                           clipBehavior: Clip.none,
                                           children: [
-                                            CircleAvatar(radius: 28, backgroundImage: NetworkImage(activity.avatar)),
+                                            CircleAvatar(
+                                              radius: 28,
+                                              backgroundImage: NetworkImage(
+                                                activity.avatar,
+                                              ),
+                                            ),
                                             Positioned(
                                               right: -2,
                                               bottom: -2,
                                               child: Container(
-                                                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
-                                                decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(999)),
-                                                child: Text(activity.countryCode, style: const TextStyle(fontSize: 10, fontWeight: FontWeight.w700)),
+                                                padding:
+                                                    const EdgeInsets.symmetric(
+                                                      horizontal: 6,
+                                                      vertical: 4,
+                                                    ),
+                                                decoration: BoxDecoration(
+                                                  color: Colors.white,
+                                                  borderRadius:
+                                                      BorderRadius.circular(
+                                                        999,
+                                                      ),
+                                                ),
+                                                child: Text(
+                                                  activity.countryCode,
+                                                  style: const TextStyle(
+                                                    fontSize: 10,
+                                                    fontWeight: FontWeight.w700,
+                                                  ),
+                                                ),
                                               ),
                                             ),
                                             if (activity.unread > 0)
@@ -367,8 +415,24 @@ class _TalentMessagesScreenState extends State<TalentMessagesScreen> {
                                                 child: Container(
                                                   width: 20,
                                                   height: 20,
-                                                  decoration: const BoxDecoration(color: Color(0xFFE34B57), shape: BoxShape.circle),
-                                                  child: Center(child: Text('${activity.unread}', style: const TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.w700))),
+                                                  decoration:
+                                                      const BoxDecoration(
+                                                        color: Color(
+                                                          0xFFE34B57,
+                                                        ),
+                                                        shape: BoxShape.circle,
+                                                      ),
+                                                  child: Center(
+                                                    child: Text(
+                                                      '${activity.unread}',
+                                                      style: const TextStyle(
+                                                        color: Colors.white,
+                                                        fontSize: 11,
+                                                        fontWeight:
+                                                            FontWeight.w700,
+                                                      ),
+                                                    ),
+                                                  ),
                                                 ),
                                               ),
                                           ],
@@ -376,12 +440,28 @@ class _TalentMessagesScreenState extends State<TalentMessagesScreen> {
                                         const SizedBox(width: 14),
                                         Expanded(
                                           child: Column(
-                                            crossAxisAlignment: CrossAxisAlignment.start,
+                                            crossAxisAlignment:
+                                                CrossAxisAlignment.start,
                                             children: [
                                               Row(
                                                 children: [
-                                                  Expanded(child: Text(activity.name, style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 16))),
-                                                  Text(activity.time, style: const TextStyle(fontSize: 12, color: Color(0xFFAAA39C))),
+                                                  Expanded(
+                                                    child: Text(
+                                                      activity.name,
+                                                      style: const TextStyle(
+                                                        fontWeight:
+                                                            FontWeight.w700,
+                                                        fontSize: 16,
+                                                      ),
+                                                    ),
+                                                  ),
+                                                  Text(
+                                                    activity.time,
+                                                    style: const TextStyle(
+                                                      fontSize: 12,
+                                                      color: Color(0xFFAAA39C),
+                                                    ),
+                                                  ),
                                                 ],
                                               ),
                                               const SizedBox(height: 4),
@@ -389,56 +469,155 @@ class _TalentMessagesScreenState extends State<TalentMessagesScreen> {
                                                 activity.message,
                                                 maxLines: 1,
                                                 overflow: TextOverflow.ellipsis,
-                                                style: TextStyle(fontSize: 14, color: activity.unread > 0 ? const Color(0xFF272421) : const Color(0xFF89827C), fontWeight: activity.unread > 0 ? FontWeight.w600 : FontWeight.w400),
+                                                style: TextStyle(
+                                                  fontSize: 14,
+                                                  color: activity.unread > 0
+                                                      ? const Color(0xFF272421)
+                                                      : const Color(0xFF89827C),
+                                                  fontWeight:
+                                                      activity.unread > 0
+                                                      ? FontWeight.w600
+                                                      : FontWeight.w400,
+                                                ),
                                               ),
                                               const SizedBox(height: 8),
                                               Wrap(
                                                 spacing: 8,
                                                 runSpacing: 8,
-                                                crossAxisAlignment: WrapCrossAlignment.center,
+                                                crossAxisAlignment:
+                                                    WrapCrossAlignment.center,
                                                 children: [
                                                   Container(
-                                                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                                                    padding:
+                                                        const EdgeInsets.symmetric(
+                                                          horizontal: 8,
+                                                          vertical: 4,
+                                                        ),
                                                     decoration: BoxDecoration(
-                                                      color: typeColor.withValues(alpha: 0.12),
-                                                      borderRadius: BorderRadius.circular(999),
+                                                      color: typeColor
+                                                          .withValues(
+                                                            alpha: 0.12,
+                                                          ),
+                                                      borderRadius:
+                                                          BorderRadius.circular(
+                                                            999,
+                                                          ),
                                                     ),
                                                     child: Row(
-                                                      mainAxisSize: MainAxisSize.min,
+                                                      mainAxisSize:
+                                                          MainAxisSize.min,
                                                       children: [
-                                                        Icon(_activityIcon(activity), size: 14, color: typeColor),
-                                                        const SizedBox(width: 4),
+                                                        Icon(
+                                                          _activityIcon(
+                                                            activity,
+                                                          ),
+                                                          size: 14,
+                                                          color: typeColor,
+                                                        ),
+                                                        const SizedBox(
+                                                          width: 4,
+                                                        ),
                                                         Text(
-                                                          _typeLabel(activity.type),
-                                                          style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: typeColor),
+                                                          _typeLabel(
+                                                            activity.type,
+                                                          ),
+                                                          style: TextStyle(
+                                                            fontSize: 11,
+                                                            fontWeight:
+                                                                FontWeight.w700,
+                                                            color: typeColor,
+                                                          ),
                                                         ),
                                                       ],
                                                     ),
                                                   ),
                                                   Container(
-                                                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                                                    padding:
+                                                        const EdgeInsets.symmetric(
+                                                          horizontal: 8,
+                                                          vertical: 4,
+                                                        ),
                                                     decoration: BoxDecoration(
-                                                      color: activity.status == 'active' ? const Color(0xFFEAF8EF) : const Color(0xFFF3F0EC),
-                                                      borderRadius: BorderRadius.circular(999),
+                                                      color:
+                                                          activity.status ==
+                                                              'active'
+                                                          ? const Color(
+                                                              0xFFEAF8EF,
+                                                            )
+                                                          : const Color(
+                                                              0xFFF3F0EC,
+                                                            ),
+                                                      borderRadius:
+                                                          BorderRadius.circular(
+                                                            999,
+                                                          ),
                                                     ),
                                                     child: Text(
-                                                      activity.status == 'active' ? 'Active' : 'Archived',
-                                                      style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: activity.status == 'active' ? const Color(0xFF2FA655) : const Color(0xFF8A837D)),
+                                                      activity.status ==
+                                                              'active'
+                                                          ? 'Active'
+                                                          : 'Archived',
+                                                      style: TextStyle(
+                                                        fontSize: 11,
+                                                        fontWeight:
+                                                            FontWeight.w600,
+                                                        color:
+                                                            activity.status ==
+                                                                'active'
+                                                            ? const Color(
+                                                                0xFF2FA655,
+                                                              )
+                                                            : const Color(
+                                                                0xFF8A837D,
+                                                              ),
+                                                      ),
                                                     ),
                                                   ),
                                                   Text(
                                                     activity.status == 'active'
-                                                        ? (activity.remainingLabel ?? 'Active now')
-                                                        : (activity.isScheduleMessage ? 'Chat aktif hanya H-3 sampai H+1 acara' : 'Archived activity'),
-                                                    style: TextStyle(fontSize: 12, color: activity.status == 'active' ? const Color(0xFF2FA655) : const Color(0xFF8A837D), fontWeight: FontWeight.w700),
+                                                        ? (activity
+                                                                  .remainingLabel ??
+                                                              'Active now')
+                                                        : (activity
+                                                                  .isScheduleMessage
+                                                              ? 'Chat aktif hanya H-3 sampai H+1 acara'
+                                                              : 'Archived activity'),
+                                                    style: TextStyle(
+                                                      fontSize: 12,
+                                                      color:
+                                                          activity.status ==
+                                                              'active'
+                                                          ? const Color(
+                                                              0xFF2FA655,
+                                                            )
+                                                          : const Color(
+                                                              0xFF8A837D,
+                                                            ),
+                                                      fontWeight:
+                                                          FontWeight.w700,
+                                                    ),
                                                   ),
-                                                  Text('🪙 ${activity.lastEarning}', style: const TextStyle(fontSize: 12, color: Color(0xFF2FA655), fontWeight: FontWeight.w700)),
+                                                  Text(
+                                                    '🪙 ${activity.lastEarning}',
+                                                    style: const TextStyle(
+                                                      fontSize: 12,
+                                                      color: Color(0xFF2FA655),
+                                                      fontWeight:
+                                                          FontWeight.w700,
+                                                    ),
+                                                  ),
                                                 ],
                                               ),
                                             ],
                                           ),
                                         ),
-                                        IconButton(onPressed: () {}, icon: const Icon(Icons.tune_rounded, color: Color(0xFF8C857E))),
+                                        IconButton(
+                                          onPressed: () {},
+                                          icon: const Icon(
+                                            Icons.tune_rounded,
+                                            color: Color(0xFF8C857E),
+                                          ),
+                                        ),
                                       ],
                                     ),
                                   ),
@@ -468,7 +647,14 @@ class _TalentMessagesScreenState extends State<TalentMessagesScreen> {
             color: isActive ? talentAmberDark : Colors.transparent,
             borderRadius: BorderRadius.circular(14),
           ),
-          child: Text(label, textAlign: TextAlign.center, style: TextStyle(color: isActive ? Colors.white : const Color(0xFF6F6862), fontWeight: FontWeight.w600)),
+          child: Text(
+            label,
+            textAlign: TextAlign.center,
+            style: TextStyle(
+              color: isActive ? Colors.white : const Color(0xFF6F6862),
+              fontWeight: FontWeight.w600,
+            ),
+          ),
         ),
       ),
     );

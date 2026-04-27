@@ -2,10 +2,20 @@
 
 import 'package:flutter/material.dart';
 
+import '../../core/services/auth_service.dart';
+import '../../core/services/talent_profile_service.dart';
+import '../shared/loading_splash.dart';
 import 'talent_ui_shared.dart';
 
 class TalentSettingsScreen extends StatefulWidget {
-  const TalentSettingsScreen({Key? key}) : super(key: key);
+  const TalentSettingsScreen({
+    Key? key,
+    this.showBottomNav = true,
+    this.showBackButton = true,
+  }) : super(key: key);
+
+  final bool showBottomNav;
+  final bool showBackButton;
 
   @override
   State<TalentSettingsScreen> createState() => _TalentSettingsScreenState();
@@ -16,7 +26,20 @@ class _TalentSettingsScreenState extends State<TalentSettingsScreen> {
   bool showCurrentPassword = false;
   bool showNewPassword = false;
   bool showConfirmPassword = false;
+  TalentProfileData? _profile;
+  bool _isLoadingProfile = false;
   late final TextEditingController _referralCodeController;
+  late final TextEditingController _callNameController;
+  late final TextEditingController _emailController;
+  late final TextEditingController _phoneCountryCodeController;
+  late final TextEditingController _phoneController;
+  late final TextEditingController _addressController;
+  late final TextEditingController _cityController;
+  late final TextEditingController _countryController;
+  late final TextEditingController _postcodeController;
+  late final TextEditingController _currentPasswordController;
+  late final TextEditingController _newPasswordController;
+  late final TextEditingController _confirmPasswordController;
   late bool _isReferralCodeLocked;
 
   final List<String> availableLanguages = [
@@ -50,36 +73,312 @@ class _TalentSettingsScreenState extends State<TalentSettingsScreen> {
   void initState() {
     super.initState();
     _referralCodeController = TextEditingController(text: 'TalentHub Agency');
+    _callNameController = TextEditingController();
+    _emailController = TextEditingController();
+    _phoneCountryCodeController = TextEditingController();
+    _phoneController = TextEditingController();
+    _addressController = TextEditingController();
+    _cityController = TextEditingController();
+    _countryController = TextEditingController();
+    _postcodeController = TextEditingController();
+    _currentPasswordController = TextEditingController();
+    _newPasswordController = TextEditingController();
+    _confirmPasswordController = TextEditingController();
     _isReferralCodeLocked = _referralCodeController.text.trim().isNotEmpty;
+
+    final cachedProfile = TalentProfileService.peekCachedMyProfile();
+    if (cachedProfile != null) {
+      _applyProfile(cachedProfile);
+    }
+
+    _loadProfile(forceRefresh: cachedProfile != null);
   }
 
   @override
   void dispose() {
     _referralCodeController.dispose();
+    _callNameController.dispose();
+    _emailController.dispose();
+    _phoneCountryCodeController.dispose();
+    _phoneController.dispose();
+    _addressController.dispose();
+    _cityController.dispose();
+    _countryController.dispose();
+    _postcodeController.dispose();
+    _currentPasswordController.dispose();
+    _newPasswordController.dispose();
+    _confirmPasswordController.dispose();
     super.dispose();
   }
 
+  void _applyProfile(TalentProfileData profile) {
+    _profile = profile;
+    _callNameController.text = profile.callName;
+    _emailController.text = profile.email;
+    _phoneCountryCodeController.text = profile.phoneCountryCode;
+    _phoneController.text = profile.phone;
+    _addressController.text = profile.address;
+    _cityController.text = profile.city;
+    _countryController.text = profile.country;
+    _postcodeController.text = profile.postcode;
+  }
+
+  Future<void> _loadProfile({bool forceRefresh = false}) async {
+    if (_isLoadingProfile) {
+      return;
+    }
+
+    setState(() => _isLoadingProfile = true);
+    try {
+      final profile = await TalentProfileService.getMyProfile(
+        forceRefresh: forceRefresh,
+      );
+      if (!mounted) {
+        return;
+      }
+      setState(() {
+        _applyProfile(profile);
+      });
+    } on AuthServiceException catch (error) {
+      if (!mounted) {
+        return;
+      }
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(error.message)));
+    } catch (error) {
+      if (!mounted) {
+        return;
+      }
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Gagal memuat pengaturan talent: $error')),
+      );
+    } finally {
+      if (mounted) {
+        setState(() => _isLoadingProfile = false);
+      }
+    }
+  }
+
+  Future<void> _saveBasicSettings() async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) {
+        return AlertDialog(
+          title: const Text('Konfirmasi Perubahan'),
+          content: const Text(
+            'Apakah anda yakin ingin mengubah settingan ini?',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(dialogContext).pop(false),
+              child: const Text('Batal'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.of(dialogContext).pop(true),
+              child: const Text('Ya'),
+            ),
+          ],
+        );
+      },
+    );
+
+    if (confirmed != true || !mounted) {
+      return;
+    }
+
+    try {
+      final profile = await AppLoadingOverlay.of(context).run<TalentProfileData>(
+        () async {
+          return TalentProfileService.updateBasicSettings(
+            callName: _callNameController.text.trim(),
+            email: _emailController.text.trim(),
+            phoneCountryCode: _phoneCountryCodeController.text.trim(),
+            phone: _phoneController.text.trim(),
+            address: _addressController.text.trim(),
+            city: _cityController.text.trim(),
+            country: _countryController.text.trim(),
+            postcode: _postcodeController.text.trim(),
+          );
+        },
+      );
+
+      if (!mounted) {
+        return;
+      }
+
+      setState(() {
+        _applyProfile(profile);
+      });
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Pengaturan talent berhasil disimpan.')),
+      );
+    } on AuthServiceException catch (error) {
+      if (!mounted) {
+        return;
+      }
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(error.message)));
+    } catch (error) {
+      if (!mounted) {
+        return;
+      }
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Gagal menyimpan pengaturan talent: $error')),
+      );
+    }
+  }
+
+  Future<void> _handleSaveChanges() async {
+    if (activeTab == 'basic') {
+      await _saveBasicSettings();
+      return;
+    }
+
+    if (activeTab == 'security') {
+      await _changePassword();
+      return;
+    }
+
+    if (activeTab == 'talent' &&
+        !_isReferralCodeLocked &&
+        _referralCodeController.text.trim().isNotEmpty) {
+      setState(() {
+        _isReferralCodeLocked = true;
+      });
+    }
+
+    if (!mounted) {
+      return;
+    }
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+          activeTab == 'security'
+              ? 'Password updated successfully.'
+              : 'Changes saved successfully.',
+        ),
+      ),
+    );
+  }
+
+  Future<void> _changePassword() async {
+    final currentPassword = _currentPasswordController.text.trim();
+    final newPassword = _newPasswordController.text.trim();
+    final confirmPassword = _confirmPasswordController.text.trim();
+
+    if (currentPassword.isEmpty ||
+        newPassword.isEmpty ||
+        confirmPassword.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Semua field password harus diisi.')),
+      );
+      return;
+    }
+
+    if (newPassword != confirmPassword) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Konfirmasi password baru tidak cocok.'),
+        ),
+      );
+      return;
+    }
+
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) {
+        return AlertDialog(
+          title: const Text('Konfirmasi Perubahan'),
+          content: const Text('Apakah anda yakin ingin mengubah password ini?'),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(dialogContext).pop(false),
+              child: const Text('Batal'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.of(dialogContext).pop(true),
+              child: const Text('Oke'),
+            ),
+          ],
+        );
+      },
+    );
+
+    if (confirmed != true || !mounted) {
+      return;
+    }
+
+    try {
+      await AppLoadingOverlay.of(context).run<void>(() async {
+        await TalentProfileService.changePassword(
+          currentPassword: currentPassword,
+          newPassword: newPassword,
+          confirmPassword: confirmPassword,
+        );
+      });
+
+      _currentPasswordController.clear();
+      _newPasswordController.clear();
+      _confirmPasswordController.clear();
+
+      if (!mounted) {
+        return;
+      }
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Password talent berhasil diperbarui.')),
+      );
+    } on AuthServiceException catch (error) {
+      if (!mounted) {
+        return;
+      }
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(error.message)),
+      );
+    } catch (error) {
+      if (!mounted) {
+        return;
+      }
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Gagal mengubah password talent: $error')),
+      );
+    }
+  }
+
+  String _displayValue(String value) {
+    final trimmed = value.trim();
+    return trimmed.isNotEmpty ? trimmed : '-';
+  }
+
   void _handleBack() {
+    if (!widget.showBackButton) {
+      navigateToTalentTab(context, '/talent-home');
+      return;
+    }
+
     final navigator = Navigator.of(context);
     if (navigator.canPop()) {
       navigator.pop();
       return;
     }
 
-    navigator.pushReplacementNamed('/talent-home');
+    navigateToTalentTab(context, '/talent-home');
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: talentBg,
-      bottomNavigationBar: const TalentBottomNav(
-        currentRoute: '/talent-settings',
-      ),
+      bottomNavigationBar: widget.showBottomNav
+          ? const TalentBottomNav(currentRoute: '/talent-settings')
+          : null,
       body: PopScope(
-        canPop: false,
+        canPop: !widget.showBackButton,
         onPopInvokedWithResult: (didPop, result) {
-          if (!didPop) {
+          if (!didPop && widget.showBackButton) {
             _handleBack();
           }
         },
@@ -100,14 +399,17 @@ class _TalentSettingsScreenState extends State<TalentSettingsScreen> {
                     ),
                     child: Row(
                       children: [
-                        IconButton(
-                          onPressed: _handleBack,
-                          icon: const Icon(
-                            Icons.chevron_left_rounded,
-                            color: Colors.white,
-                            size: 30,
-                          ),
-                        ),
+                        if (widget.showBackButton)
+                          IconButton(
+                            onPressed: _handleBack,
+                            icon: const Icon(
+                              Icons.chevron_left_rounded,
+                              color: Colors.white,
+                              size: 30,
+                            ),
+                          )
+                        else
+                          const SizedBox(width: 12),
                         const SizedBox(width: 4),
                         const Text(
                           'Talent Settings',
@@ -140,39 +442,54 @@ class _TalentSettingsScreenState extends State<TalentSettingsScreen> {
                             TalentSectionCard(
                               child: Column(
                                 crossAxisAlignment: CrossAxisAlignment.start,
-                                children: const [
-                                  Text(
+                                children: [
+                                  const Text(
                                     'Personal Information',
                                     style: TextStyle(
                                       fontWeight: FontWeight.w700,
                                       fontSize: 16,
                                     ),
                                   ),
-                                  SizedBox(height: 14),
+                                  const SizedBox(height: 14),
+                                  if (_isLoadingProfile && _profile == null)
+                                    const Padding(
+                                      padding: EdgeInsets.only(bottom: 14),
+                                      child: LinearProgressIndicator(minHeight: 3),
+                                    ),
                                   TalentField(
                                     label: 'Call Name (Nickname)',
                                     icon: Icons.person_outline_rounded,
-                                    initialValue: 'Jess',
+                                    initialValue: '',
+                                    controller: _callNameController,
                                     helper: 'This is your personal nickname',
                                   ),
                                   TalentField(
                                     label: 'Email Address',
                                     icon: Icons.mail_outline_rounded,
-                                    initialValue: 'jessica.martinez@email.com',
+                                    initialValue: '',
+                                    controller: _emailController,
                                     helper:
                                         'Changing email requires re-verification',
-                                    trailing: Icon(
+                                    trailing: const Icon(
                                       Icons.check_circle,
                                       color: Color(0xFF2FA655),
                                     ),
                                   ),
                                   TalentField(
+                                    label: 'Phone Country Code',
+                                    icon: Icons.flag_outlined,
+                                    initialValue: '',
+                                    controller: _phoneCountryCodeController,
+                                    helper: 'Example: +62',
+                                  ),
+                                  TalentField(
                                     label: 'Phone Number',
                                     icon: Icons.phone_outlined,
-                                    initialValue: '+1 (555) 987-6543',
+                                    initialValue: '',
+                                    controller: _phoneController,
                                     helper:
                                         'Changing phone requires re-verification',
-                                    trailing: Icon(
+                                    trailing: const Icon(
                                       Icons.check_circle,
                                       color: Color(0xFF2FA655),
                                     ),
@@ -180,23 +497,27 @@ class _TalentSettingsScreenState extends State<TalentSettingsScreen> {
                                   TalentField(
                                     label: 'Address',
                                     icon: Icons.home_outlined,
-                                    initialValue: '456 Oak Avenue, Suite 12',
+                                    initialValue: '',
+                                    controller: _addressController,
                                     maxLines: 3,
                                   ),
                                   TalentField(
                                     label: 'Country',
                                     icon: Icons.public_rounded,
-                                    initialValue: 'Mexico',
+                                    initialValue: '',
+                                    controller: _countryController,
                                   ),
                                   TalentField(
                                     label: 'City',
                                     icon: Icons.location_on_outlined,
-                                    initialValue: 'Mexico City',
+                                    initialValue: '',
+                                    controller: _cityController,
                                   ),
                                   TalentField(
                                     label: 'Postcode / ZIP Code',
                                     icon: Icons.pin_drop_outlined,
-                                    initialValue: '03100',
+                                    initialValue: '',
+                                    controller: _postcodeController,
                                   ),
                                 ],
                               ),
@@ -205,37 +526,37 @@ class _TalentSettingsScreenState extends State<TalentSettingsScreen> {
                             TalentSectionCard(
                               child: Column(
                                 crossAxisAlignment: CrossAxisAlignment.start,
-                                children: const [
-                                  Text(
+                                children: [
+                                  const Text(
                                     'Registration Information',
                                     style: TextStyle(
                                       fontWeight: FontWeight.w700,
                                       fontSize: 16,
                                     ),
                                   ),
-                                  SizedBox(height: 14),
+                                  const SizedBox(height: 14),
                                   TalentField(
                                     label: 'First Name',
                                     icon: Icons.person_outline_rounded,
-                                    initialValue: 'Jessica',
+                                    initialValue: _displayValue(_profile?.firstName ?? ''),
                                     enabled: false,
                                   ),
                                   TalentField(
                                     label: 'Last Name',
                                     icon: Icons.person_outline_rounded,
-                                    initialValue: 'Martinez',
+                                    initialValue: _displayValue(_profile?.lastName ?? ''),
                                     enabled: false,
                                   ),
                                   TalentField(
                                     label: 'Gender',
                                     icon: Icons.groups_rounded,
-                                    initialValue: 'Female',
+                                    initialValue: _displayValue(_profile?.gender ?? ''),
                                     enabled: false,
                                   ),
                                   TalentField(
                                     label: 'Date of Birth',
                                     icon: Icons.calendar_month_outlined,
-                                    initialValue: 'Mar 22, 1996',
+                                    initialValue: _displayValue(_profile?.dateOfBirth ?? ''),
                                     enabled: false,
                                   ),
                                 ],
@@ -400,6 +721,7 @@ class _TalentSettingsScreenState extends State<TalentSettingsScreen> {
                                       () => showCurrentPassword =
                                           !showCurrentPassword,
                                     ),
+                                    controller: _currentPasswordController,
                                   ),
                                   _passwordField(
                                     'New Password',
@@ -407,6 +729,7 @@ class _TalentSettingsScreenState extends State<TalentSettingsScreen> {
                                     () => setState(
                                       () => showNewPassword = !showNewPassword,
                                     ),
+                                    controller: _newPasswordController,
                                   ),
                                   _passwordField(
                                     'Confirm New Password',
@@ -415,6 +738,7 @@ class _TalentSettingsScreenState extends State<TalentSettingsScreen> {
                                       () => showConfirmPassword =
                                           !showConfirmPassword,
                                     ),
+                                    controller: _confirmPasswordController,
                                   ),
                                 ],
                               ),
@@ -513,27 +837,7 @@ class _TalentSettingsScreenState extends State<TalentSettingsScreen> {
                           SizedBox(
                             width: double.infinity,
                             child: FilledButton(
-                              onPressed: () {
-                                if (activeTab == 'talent' &&
-                                    !_isReferralCodeLocked &&
-                                    _referralCodeController.text
-                                        .trim()
-                                        .isNotEmpty) {
-                                  setState(() {
-                                    _isReferralCodeLocked = true;
-                                  });
-                                }
-
-                                ScaffoldMessenger.of(context).showSnackBar(
-                                  SnackBar(
-                                    content: Text(
-                                      activeTab == 'security'
-                                          ? 'Password updated successfully.'
-                                          : 'Changes saved successfully.',
-                                    ),
-                                  ),
-                                );
-                              },
+                              onPressed: _handleSaveChanges,
                               style: FilledButton.styleFrom(
                                 backgroundColor: talentAmberDark,
                                 foregroundColor: Colors.white,
@@ -591,7 +895,12 @@ class _TalentSettingsScreenState extends State<TalentSettingsScreen> {
     );
   }
 
-  Widget _passwordField(String label, bool visible, VoidCallback onToggle) {
+  Widget _passwordField(
+    String label,
+    bool visible,
+    VoidCallback onToggle, {
+    required TextEditingController controller,
+  }) {
     return Padding(
       padding: const EdgeInsets.only(bottom: 14),
       child: Column(
@@ -618,6 +927,7 @@ class _TalentSettingsScreenState extends State<TalentSettingsScreen> {
                 ),
                 Expanded(
                   child: TextField(
+                    controller: controller,
                     obscureText: !visible,
                     decoration: InputDecoration(
                       border: InputBorder.none,
