@@ -1,33 +1,53 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
-import '../../shared/demo_schedule_store.dart';
+import '../../core/config/api_config.dart';
+import '../../core/services/chat_service.dart';
+import '../../core/services/talent_public_profile_service.dart';
 import '../shared/activity_session_screen.dart';
 import '../shared/loading_splash.dart';
 import 'chat_screen.dart';
 import 'user_ui_shared.dart';
 
+const Color _userInboxHeaderStart = Color(0xFF8A573A);
+const Color _userInboxHeaderEnd = Color(0xFFB17443);
+const Color _userInboxSurface = Color(0xFFF5F1E8);
+
 enum _UserActivityType { message, phone, video }
 
 class _UserActivity {
   const _UserActivity({
-    required this.hostId,
-    required this.type,
-    required this.lastUpdate,
-    required this.timestamp,
+    required this.id,
+    required this.name,
+    required this.message,
+    required this.time,
+    required this.avatar,
     required this.unread,
-    required this.isActive,
-    required this.coinCost,
+    required this.status,
+    required this.trailingLabel,
+    required this.type,
+    this.country = '',
+    this.countryCode = 'US',
     this.remainingLabel,
+    this.chatSession,
+    this.host,
   });
 
-  final int hostId;
+  final int id;
+  final String name;
+  final String message;
+  final String time;
+  final String avatar;
+  final int unread;
+  final String status;
+  final String trailingLabel;
   final _UserActivityType type;
-  final String lastUpdate;
-  final String timestamp;
-  final bool unread;
-  final bool isActive;
-  final int coinCost;
+  final String country;
+  final String countryCode;
   final String? remainingLabel;
+  final ChatSessionSummary? chatSession;
+  final DemoUserHost? host;
 }
 
 class MessagesScreen extends StatefulWidget {
@@ -41,125 +61,425 @@ class MessagesScreen extends StatefulWidget {
 
 class _MessagesScreenState extends State<MessagesScreen> {
   final TextEditingController _searchController = TextEditingController();
+  StreamSubscription<void>? _sessionSubscription;
+  List<ChatSessionSummary> _chatSessions = const [];
+  Map<String, TalentPublicProfileData> _talentProfilesByAccountId = const {};
+  bool _isLoadingSessions = false;
   String _activeTab = 'all';
-  DemoUserHost? selectedHost;
-  _UserActivity? selectedActivity;
 
-  final activities = const [
-    _UserActivity(
-      hostId: 1,
-      type: _UserActivityType.message,
-      lastUpdate: "I'd love to hear more about it! 😊",
-      timestamp: '2m ago',
-      unread: true,
-      isActive: true,
-      coinCost: 150,
-      remainingLabel: '5 min left',
-    ),
-    _UserActivity(
-      hostId: 1,
+  final List<_UserActivity> _activities = <_UserActivity>[
+    const _UserActivity(
+      id: 1001,
+      name: 'Clara',
+      message: 'Video call is still running.',
+      time: '4 min ago',
+      avatar:
+          'https://images.unsplash.com/photo-1512316609839-ce289d3eba0a?w=800',
+      unread: 0,
+      status: 'active',
+      trailingLabel: '260 coins',
       type: _UserActivityType.video,
-      lastUpdate: 'Video call is still running',
-      timestamp: '4m ago',
-      unread: false,
-      isActive: true,
-      coinCost: 260,
+      countryCode: 'PH',
       remainingLabel: '12 min left',
     ),
-    _UserActivity(
-      hostId: 3,
+    const _UserActivity(
+      id: 1002,
+      name: 'Emma',
+      message: 'Phone call still active.',
+      time: '12 min ago',
+      avatar:
+          'https://images.unsplash.com/photo-1524504388940-b1c1722653e1?w=800',
+      unread: 0,
+      status: 'active',
+      trailingLabel: '180 coins',
       type: _UserActivityType.phone,
-      lastUpdate: 'Phone call still active',
-      timestamp: '12m ago',
-      unread: false,
-      isActive: true,
-      coinCost: 180,
+      countryCode: 'US',
       remainingLabel: '8 min left',
     ),
-    _UserActivity(
-      hostId: 2,
+    const _UserActivity(
+      id: 1003,
+      name: 'Sophie',
+      message: 'Phone session ended earlier today.',
+      time: '1 hr ago',
+      avatar:
+          'https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=800',
+      unread: 0,
+      status: 'archived',
+      trailingLabel: '180 coins',
       type: _UserActivityType.phone,
-      lastUpdate: 'Phone session ended earlier today',
-      timestamp: '1h ago',
-      unread: false,
-      isActive: false,
-      coinCost: 180,
+      countryCode: 'ID',
     ),
-    _UserActivity(
-      hostId: 4,
-      type: _UserActivityType.message,
-      lastUpdate: 'See you soon! 💕',
-      timestamp: '3h ago',
-      unread: true,
-      isActive: false,
-      coinCost: 120,
-    ),
-    _UserActivity(
-      hostId: 6,
+    const _UserActivity(
+      id: 1004,
+      name: 'Lia',
+      message: 'Archived video call. Start again to reconnect.',
+      time: 'Yesterday',
+      avatar:
+          'https://images.unsplash.com/photo-1515886657613-9f3515b0c78f?w=800',
+      unread: 0,
+      status: 'archived',
+      trailingLabel: '320 coins',
       type: _UserActivityType.video,
-      lastUpdate: 'Archived video call. Start again to reconnect.',
-      timestamp: 'Yesterday',
-      unread: false,
-      isActive: false,
-      coinCost: 320,
+      countryCode: 'TH',
     ),
   ];
 
   @override
+  void initState() {
+    super.initState();
+    _loadChatSessions();
+    _sessionSubscription = ChatService.realtime.sessionStream.listen((_) {
+      if (!mounted) {
+        return;
+      }
+      _loadChatSessions(forceRefresh: true);
+    });
+    unawaited(ChatService.realtime.connect());
+  }
+
+  @override
   void dispose() {
+    _sessionSubscription?.cancel();
     _searchController.dispose();
     super.dispose();
   }
 
-  bool _effectiveIsActive(_UserActivity activity, DemoUserHost host) {
-    if (activity.type != _UserActivityType.message) {
-      return activity.isActive;
-    }
+  Future<void> _loadChatSessions({bool forceRefresh = false}) async {
+    setState(() => _isLoadingSessions = true);
+    try {
+      final sessions = await ChatService.getChatSessions(
+        forceRefresh: forceRefresh,
+      );
+      final talentProfilesByAccountId = await _loadTalentProfilesForSessions(
+        sessions,
+        forceRefresh: forceRefresh,
+      );
+      if (!mounted) {
+        return;
+      }
 
-    final acceptedRequest = demoScheduleStore.latestAcceptedRequestForUserHost(
-      userName: demoCurrentUserName,
-      hostName: host.name,
-    );
-    if (acceptedRequest == null) {
-      return activity.isActive;
+      setState(() {
+        _chatSessions = sessions;
+        _talentProfilesByAccountId = talentProfilesByAccountId;
+        _isLoadingSessions = false;
+      });
+    } catch (_) {
+      if (!mounted) {
+        return;
+      }
+      setState(() => _isLoadingSessions = false);
     }
-
-    return demoScheduleStore.canOpenEventChat(
-      userName: demoCurrentUserName,
-      hostName: host.name,
-    );
   }
 
-  String _activityStatusText(_UserActivity activity, DemoUserHost host) {
-    if (activity.type == _UserActivityType.message) {
-      final acceptedRequest = demoScheduleStore
-          .latestAcceptedRequestForUserHost(
-            userName: demoCurrentUserName,
-            hostName: host.name,
+  Future<Map<String, TalentPublicProfileData>> _loadTalentProfilesForSessions(
+    List<ChatSessionSummary> sessions, {
+    required bool forceRefresh,
+  }) async {
+    final accountIds = sessions
+        .map((session) => session.counterpartAccountId.trim())
+        .where((accountId) => accountId.isNotEmpty)
+        .toSet();
+
+    if (accountIds.isEmpty) {
+      return _talentProfilesByAccountId;
+    }
+
+    final nextProfiles = Map<String, TalentPublicProfileData>.from(
+      _talentProfilesByAccountId,
+    );
+
+    await Future.wait(
+      accountIds.map((accountId) async {
+        if (!forceRefresh && nextProfiles.containsKey(accountId)) {
+          return;
+        }
+
+        try {
+          final profile = await TalentPublicProfileService.getTalentProfile(
+            accountId,
+            forceRefresh: forceRefresh,
           );
-      if (acceptedRequest != null) {
-        final isOpen = demoScheduleStore.canOpenEventChat(
-          userName: demoCurrentUserName,
-          hostName: host.name,
-        );
-        return isOpen
-            ? 'Active • Chat tersedia H-3 sampai H+1 acara'
-            : 'Archived • Chat hanya aktif H-3 sampai H+1 acara';
+          nextProfiles[accountId] = profile;
+        } catch (_) {
+          // Keep chat sessions usable even when profile enrichment fails.
+        }
+      }),
+    );
+
+    return nextProfiles;
+  }
+
+  String _countryFromLocation(String location) {
+    final parts = location
+        .split(',')
+        .map((part) => part.trim())
+        .where((part) => part.isNotEmpty)
+        .toList(growable: false);
+    if (parts.isEmpty) {
+      return '';
+    }
+    return parts.last;
+  }
+
+  DemoUserHost _resolveHost(ChatSessionSummary session) {
+    final profile =
+        _talentProfilesByAccountId[session.counterpartAccountId.trim()];
+    DemoUserHost? matchedHost;
+    for (final host in demoUserHosts) {
+      if (session.counterpartAccountId.trim().isNotEmpty &&
+          host.accountId.trim().isNotEmpty &&
+          host.accountId == session.counterpartAccountId) {
+        matchedHost = host;
+        break;
       }
     }
 
-    return activity.isActive
-        ? 'Active • ${activity.remainingLabel ?? 'Ready'}'
-        : 'Archived • Reopen with ${activity.coinCost} coins';
+    if (matchedHost == null) {
+      for (final host in demoUserHosts) {
+        if (host.name.trim().toLowerCase() ==
+            session.counterpartName.trim().toLowerCase()) {
+          matchedHost = host;
+          break;
+        }
+      }
+    }
+
+    final displayName = session.counterpartName.trim().isNotEmpty
+        ? session.counterpartName
+        : (profile?.stageName.trim().isNotEmpty == true
+          ? profile!.stageName
+          : (matchedHost?.name ?? 'Talent'));
+    final avatarUrl = profile?.avatarUrl.trim().isNotEmpty == true
+        ? ApiConfig.resolveExternalUrl(profile!.avatarUrl)
+        : (session.counterpartAvatarUrl.trim().isNotEmpty
+          ? ApiConfig.resolveExternalUrl(session.counterpartAvatarUrl)
+          : (matchedHost?.imageUrl ?? ''));
+    final country = profile?.country.trim().isNotEmpty == true
+        ? profile!.country.trim()
+        : (session.counterpartCountry.trim().isNotEmpty
+          ? session.counterpartCountry.trim()
+          : _countryFromLocation(matchedHost?.location ?? ''));
+    final countryCode = profile?.country.trim().isNotEmpty == true
+        ? (profile!.countryCode.trim().isNotEmpty
+              ? profile.countryCode.trim().toUpperCase()
+              : _countryCodeFromCountryName(profile.country))
+        : (session.counterpartCountryCode.trim().isNotEmpty
+          ? session.counterpartCountryCode.trim().toUpperCase()
+          : (matchedHost?.countryCode ?? 'US'));
+
+    return DemoUserHost(
+      id: session.roomId.hashCode,
+      accountId: session.counterpartAccountId.isNotEmpty
+          ? session.counterpartAccountId
+          : (matchedHost?.accountId ?? ''),
+      name: displayName,
+      age: profile?.age ?? matchedHost?.age ?? 0,
+      city: profile?.city.trim().isNotEmpty == true
+          ? profile!.city.trim()
+          : (matchedHost?.city ?? 'Unknown City'),
+      countryCode: countryCode,
+      description: profile?.bio.trim().isNotEmpty == true
+          ? profile!.bio.trim()
+          : (matchedHost?.description ?? 'Chat talent'),
+      imageUrl: avatarUrl,
+      pricePerMin: profile?.servicePrices['chat'] ?? matchedHost?.pricePerMin ?? 0,
+      tierLabel: profile?.level.trim().isNotEmpty == true
+          ? _capitalize(profile!.level)
+          : (matchedHost?.tierLabel ?? 'Basic'),
+      rating: profile?.rating ?? matchedHost?.rating ?? 0,
+      reviewCount: profile?.reviewCount ?? matchedHost?.reviewCount ?? 0,
+      badges: profile != null
+          ? [
+              if (profile.verificationStatus.trim().isNotEmpty)
+                _capitalize(profile.verificationStatus),
+              ...profile.specialties.take(2),
+            ]
+          : (matchedHost?.badges ?? const []),
+      portfolio: profile?.portfolioUrls ?? matchedHost?.portfolio ?? const [],
+      isOnline: profile?.isOnline ?? matchedHost?.isOnline ?? true,
+      location: [
+            profile?.city.trim().isNotEmpty == true
+                ? profile!.city.trim()
+                : (matchedHost?.city ?? ''),
+            country,
+          ]
+          .where((part) => part.trim().isNotEmpty)
+          .join(', '),
+      biography: profile?.bio ?? matchedHost?.biography ?? '',
+      languages: profile?.languages ?? matchedHost?.languages ?? const [],
+      specialties: profile?.specialties ?? matchedHost?.specialties ?? const [],
+      servicePrices: profile?.servicePrices ?? matchedHost?.servicePrices ?? const {},
+    );
   }
 
-  Future<void> _openActivity(_UserActivity activity, DemoUserHost host) async {
+  String _countryCodeFromCountryName(String country) {
+    const overrides = {
+      'indonesia': 'ID',
+      'philippines': 'PH',
+      'thailand': 'TH',
+      'vietnam': 'VN',
+      'japan': 'JP',
+      'united states': 'US',
+      'usa': 'US',
+      'united kingdom': 'GB',
+      'great britain': 'GB',
+      'canada': 'CA',
+      'singapore': 'SG',
+      'malaysia': 'MY',
+      'south korea': 'KR',
+    };
+
+    final normalized = country.trim().toLowerCase();
+    final override = overrides[normalized];
+    if (override != null) {
+      return override;
+    }
+
+    final letters = normalized.replaceAll(RegExp(r'[^a-z]'), '');
+    if (letters.length >= 2) {
+      return letters.substring(0, 2).toUpperCase();
+    }
+    return 'US';
+  }
+
+  String _capitalize(String value) {
+    if (value.isEmpty) {
+      return value;
+    }
+    return '${value[0].toUpperCase()}${value.substring(1)}';
+  }
+
+  _UserActivityType _activityTypeFromChannel(String channelType) {
+    switch (channelType.trim().toLowerCase()) {
+      case 'voice':
+        return _UserActivityType.phone;
+      case 'video':
+        return _UserActivityType.video;
+      default:
+        return _UserActivityType.message;
+    }
+  }
+
+  _UserActivity _chatActivityFromSession(ChatSessionSummary session) {
+    final normalizedStatus = session.status.trim().toLowerCase();
+    final isOpenable = session.isActiveNow;
+    final host = _resolveHost(session);
+    final statusLabel = !session.isActiveNow
+        ? 'Chat expired'
+        : switch (normalizedStatus) {
+            'pending' => 'Menunggu balasan talent',
+            'confirmed' => 'Chat aktif',
+            'active' => 'Chat aktif',
+            '' => 'Chat aktif',
+            _ => 'Chat aktif',
+          };
+
+    return _UserActivity(
+      id: session.roomId.hashCode,
+      name: session.counterpartName.trim().isNotEmpty
+          ? session.counterpartName
+          : host.name,
+      message: session.lastMessageText.trim().isNotEmpty
+          ? session.lastMessageText
+          : 'Percakapan chat siap dibuka.',
+      time: session.lastMessageTimeLabel.trim().isNotEmpty
+          ? session.lastMessageTimeLabel
+          : 'Baru saja',
+        avatar: host.imageUrl,
+      unread: session.unreadCount,
+      status: isOpenable ? 'active' : 'archived',
+      trailingLabel: isOpenable ? 'Realtime chat' : 'Expired chat',
+      type: _activityTypeFromChannel(session.channelType),
+        country: host.location.isNotEmpty ? _countryFromLocation(host.location) : '',
+        countryCode: host.countryCode,
+      remainingLabel: statusLabel,
+      chatSession: session,
+      host: host,
+    );
+  }
+
+  Future<void> _openActivity(_UserActivity activity) async {
+    if (activity.status != 'active' && activity.type != _UserActivityType.message) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            '${_typeLabel(activity.type)} with ${activity.name} is no longer active.',
+          ),
+        ),
+      );
+      return;
+    }
+
     switch (activity.type) {
       case _UserActivityType.message:
+        var session = activity.chatSession;
+        final host = activity.host ?? demoUserHosts.first;
+        if (session == null) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Room chat untuk aktivitas ini belum tersedia.'),
+            ),
+          );
+          return;
+        }
+
+        if (activity.status != 'active') {
+          final shouldReactivate = await showDialog<bool>(
+            context: context,
+            builder: (dialogContext) {
+              return AlertDialog(
+                title: const Text('Lanjutkan sesi chat?'),
+                content: Text(
+                  'Chat dengan ${activity.name} sudah expired. Apakah Anda ingin melakukan sesi ulang?',
+                ),
+                actions: [
+                  TextButton(
+                    onPressed: () => Navigator.of(dialogContext).pop(false),
+                    child: const Text('Batal'),
+                  ),
+                  FilledButton(
+                    onPressed: () => Navigator.of(dialogContext).pop(true),
+                    child: const Text('Ya, lanjutkan'),
+                  ),
+                ],
+              );
+            },
+          );
+
+          if (shouldReactivate != true || !mounted) {
+            return;
+          }
+
+          try {
+            await ChatService.reactivateRoom(session.roomId);
+            final refreshedSessions = await ChatService.getChatSessions(
+              forceRefresh: true,
+            );
+            session = refreshedSessions.firstWhere(
+              (candidate) => candidate.roomId == session!.roomId,
+              orElse: () => session!,
+            );
+            if (!mounted) {
+              return;
+            }
+            setState(() {
+              _chatSessions = refreshedSessions;
+            });
+          } on Exception catch (error) {
+            if (!mounted) {
+              return;
+            }
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(content: Text(error.toString())),
+            );
+            return;
+          }
+        }
+
         await Navigator.of(context).push(
           buildLoadingSplashRoute<void>(
             settings: const RouteSettings(name: '/chat-session'),
-            builder: (context) => ChatScreen(host: host),
+            builder: (context) => ChatScreen(host: host, session: session),
           ),
         );
       case _UserActivityType.phone:
@@ -167,14 +487,12 @@ class _MessagesScreenState extends State<MessagesScreen> {
           buildLoadingSplashRoute<void>(
             settings: const RouteSettings(name: '/phone-session'),
             builder: (context) => ActivitySessionScreen(
-              peerName: host.name,
-              peerAvatar: host.imageUrl,
+              peerName: activity.name,
+              peerAvatar: activity.avatar,
               sessionMode: ActivitySessionMode.phone,
-              contextLabel: 'Phone session with ${host.name}',
-              statusLabel: activity.isActive
-                  ? 'Phone call is active'
-                  : 'Restarted phone session',
-              trailingLabel: '🪙 ${activity.coinCost}',
+              contextLabel: 'Phone session with ${activity.name}',
+              statusLabel: 'Phone call is active',
+              trailingLabel: activity.trailingLabel,
             ),
           ),
         );
@@ -183,14 +501,12 @@ class _MessagesScreenState extends State<MessagesScreen> {
           buildLoadingSplashRoute<void>(
             settings: const RouteSettings(name: '/video-session'),
             builder: (context) => ActivitySessionScreen(
-              peerName: host.name,
-              peerAvatar: host.imageUrl,
+              peerName: activity.name,
+              peerAvatar: activity.avatar,
               sessionMode: ActivitySessionMode.video,
-              contextLabel: 'Video session with ${host.name}',
-              statusLabel: activity.isActive
-                  ? 'Video call is active'
-                  : 'Restarted video session',
-              trailingLabel: '🪙 ${activity.coinCost}',
+              contextLabel: 'Video session with ${activity.name}',
+              statusLabel: 'Video call is active',
+              trailingLabel: activity.trailingLabel,
             ),
           ),
         );
@@ -208,24 +524,10 @@ class _MessagesScreenState extends State<MessagesScreen> {
     }
   }
 
-  bool _isMeetMessage(_UserActivity activity, DemoUserHost host) {
-    if (activity.type != _UserActivityType.message) {
-      return false;
-    }
-
-    return demoScheduleStore.latestAcceptedRequestForUserHost(
-          userName: demoCurrentUserName,
-          hostName: host.name,
-        ) !=
-        null;
-  }
-
-  IconData _typeIcon(_UserActivity activity, DemoUserHost host) {
-    switch (activity.type) {
+  IconData _typeIcon(_UserActivityType type) {
+    switch (type) {
       case _UserActivityType.message:
-        return _isMeetMessage(activity, host)
-            ? Icons.event_available_rounded
-            : Icons.message_rounded;
+        return Icons.message_rounded;
       case _UserActivityType.phone:
         return Icons.call_rounded;
       case _UserActivityType.video:
@@ -246,153 +548,202 @@ class _MessagesScreenState extends State<MessagesScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return ValueListenableBuilder<List<DemoMeetRequest>>(
-      valueListenable: demoScheduleStore,
-      builder: (context, value, child) {
-        final filtered = activities.where((activity) {
-          final host = demoUserHosts.firstWhere(
-            (item) => item.id == activity.hostId,
-          );
-          final query = _searchController.text.toLowerCase();
-          final isActive = _effectiveIsActive(activity, host);
-          final matchesTab =
-              _activeTab == 'all' ||
-              (_activeTab == 'active' && isActive) ||
-              (_activeTab == 'archived' && !isActive);
-          final matchesQuery =
-              query.isEmpty ||
-              host.name.toLowerCase().contains(query) ||
-              activity.lastUpdate.toLowerCase().contains(query) ||
-              _typeLabel(activity.type).toLowerCase().contains(query);
-          return matchesTab && matchesQuery;
-        }).toList();
+    final query = _searchController.text.toLowerCase();
+    final allActivities = <_UserActivity>[
+      ..._chatSessions.map(_chatActivityFromSession),
+      ..._activities,
+    ];
+    final filtered = allActivities.where((activity) {
+      final matchesTab = _activeTab == 'all' || activity.status == _activeTab;
+      final matchesQuery =
+          query.isEmpty ||
+          activity.name.toLowerCase().contains(query) ||
+          activity.message.toLowerCase().contains(query) ||
+          _typeLabel(activity.type).toLowerCase().contains(query);
+      return matchesTab && matchesQuery;
+    }).toList();
 
-        return Scaffold(
-          backgroundColor: Colors.white,
-          bottomNavigationBar: widget.showBottomNav
-              ? const UserBottomNav(currentRoute: '/messages')
-              : null,
-          body: SafeArea(
-            bottom: false,
-            child: Stack(
-              children: [
-                Column(
-                  children: [
-                    Padding(
-                      padding: const EdgeInsets.fromLTRB(24, 24, 24, 12),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          const Text(
-                            'Activity',
-                            style: TextStyle(
-                              fontSize: 28,
-                              fontWeight: FontWeight.w700,
+    return Scaffold(
+      backgroundColor: _userInboxSurface,
+      bottomNavigationBar: widget.showBottomNav
+          ? const UserBottomNav(currentRoute: '/messages')
+          : null,
+      body: SafeArea(
+        bottom: false,
+        child: Column(
+          children: [
+            Container(
+              decoration: const BoxDecoration(
+                gradient: LinearGradient(
+                  colors: [_userInboxHeaderStart, _userInboxHeaderEnd],
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                ),
+                borderRadius: BorderRadius.vertical(
+                  bottom: Radius.circular(32),
+                ),
+              ),
+              padding: const EdgeInsets.fromLTRB(24, 24, 24, 28),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text(
+                    'Notifikasi',
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontSize: 28,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  TextField(
+                    controller: _searchController,
+                    onChanged: (_) => setState(() {}),
+                    decoration: InputDecoration(
+                      hintText: 'Search activity...',
+                      prefixIcon: const Icon(
+                        Icons.search_rounded,
+                        color: Color(0xFFA79F97),
+                      ),
+                      filled: true,
+                      fillColor: Colors.white,
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(18),
+                        borderSide: BorderSide.none,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            Transform.translate(
+              offset: const Offset(0, -16),
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 24),
+                child: Container(
+                  padding: const EdgeInsets.all(6),
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(18),
+                    boxShadow: const [
+                      BoxShadow(
+                        color: Color(0x12000000),
+                        blurRadius: 16,
+                        offset: Offset(0, 6),
+                      ),
+                    ],
+                  ),
+                  child: Row(
+                    children: [
+                      _tabButton('all', 'All'),
+                      _tabButton('active', 'Active'),
+                      _tabButton('archived', 'Archived'),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+            Expanded(
+              child: _isLoadingSessions && filtered.isEmpty
+                  ? const Center(child: CircularProgressIndicator())
+                  : filtered.isEmpty
+                  ? RefreshIndicator(
+                      onRefresh: () => _loadChatSessions(forceRefresh: true),
+                      child: ListView(
+                        padding: const EdgeInsets.fromLTRB(24, 0, 24, 24),
+                        children: const [
+                          SizedBox(height: 160),
+                          Center(
+                            child: Text(
+                              'Belum ada room chat.',
+                              style: TextStyle(color: Color(0xFF8B837D)),
                             ),
-                          ),
-                          const SizedBox(height: 16),
-                          TextField(
-                            controller: _searchController,
-                            onChanged: (_) => setState(() {}),
-                            decoration: InputDecoration(
-                              hintText: 'Search activity...',
-                              prefixIcon: const Icon(
-                                Icons.search_rounded,
-                                color: Color(0xFFA5A09A),
-                              ),
-                              filled: true,
-                              fillColor: const Color(0xFFF8F8F8),
-                              border: OutlineInputBorder(
-                                borderRadius: BorderRadius.circular(16),
-                                borderSide: const BorderSide(
-                                  color: Color(0xFFE9E4DE),
-                                ),
-                              ),
-                              enabledBorder: OutlineInputBorder(
-                                borderRadius: BorderRadius.circular(16),
-                                borderSide: const BorderSide(
-                                  color: Color(0xFFE9E4DE),
-                                ),
-                              ),
-                            ),
-                          ),
-                          const SizedBox(height: 14),
-                          Row(
-                            children: [
-                              _tabButton('all', 'All'),
-                              const SizedBox(width: 10),
-                              _tabButton('active', 'Active'),
-                              const SizedBox(width: 10),
-                              _tabButton('archived', 'Archived'),
-                            ],
                           ),
                         ],
                       ),
-                    ),
-                    Expanded(
-                      child: ListView.builder(
-                        padding: const EdgeInsets.fromLTRB(24, 4, 24, 24),
+                    )
+                  : RefreshIndicator(
+                      onRefresh: () => _loadChatSessions(forceRefresh: true),
+                      child: ListView.separated(
+                        padding: const EdgeInsets.fromLTRB(24, 0, 24, 24),
                         itemCount: filtered.length,
+                        separatorBuilder: (context, index) =>
+                            const SizedBox(height: 14),
                         itemBuilder: (context, index) {
                           final activity = filtered[index];
-                          final host = demoUserHosts.firstWhere(
-                            (item) => item.id == activity.hostId,
-                          );
                           final typeColor = _typeColor(activity.type);
-                          final isCurrentlyActive = _effectiveIsActive(
-                            activity,
-                            host,
-                          );
+                          final avatarProvider = activity.avatar.trim().isNotEmpty
+                              ? NetworkImage(activity.avatar)
+                              : null;
 
-                          return InkWell(
-                            onTap: () {
-                              if (isCurrentlyActive) {
-                                _openActivity(activity, host);
-                              } else {
-                                setState(() {
-                                  selectedHost = host;
-                                  selectedActivity = activity;
-                                });
-                              }
-                            },
-                            child: Container(
-                              margin: const EdgeInsets.only(bottom: 2),
-                              padding: const EdgeInsets.symmetric(vertical: 14),
-                              decoration: const BoxDecoration(
-                                border: Border(
-                                  bottom: BorderSide(color: Color(0xFFF0ECE8)),
+                          return Container(
+                            padding: const EdgeInsets.all(14),
+                            decoration: BoxDecoration(
+                              color: Colors.white,
+                              borderRadius: BorderRadius.circular(18),
+                              boxShadow: const [
+                                BoxShadow(
+                                  color: Color(0x12000000),
+                                  blurRadius: 14,
+                                  offset: Offset(0, 4),
                                 ),
-                              ),
+                              ],
+                            ),
+                            child: InkWell(
+                              onTap: () => _openActivity(activity),
+                              borderRadius: BorderRadius.circular(18),
                               child: Row(
                                 children: [
                                   Stack(
+                                    clipBehavior: Clip.none,
                                     children: [
                                       CircleAvatar(
                                         radius: 28,
-                                        backgroundImage: NetworkImage(
-                                          host.imageUrl,
-                                        ),
+                                        backgroundColor:
+                                            const Color(0xFFF4E4D3),
+                                        backgroundImage: avatarProvider,
+                                        child: avatarProvider == null
+                                            ? Text(
+                                                activity.name.isNotEmpty
+                                                    ? activity.name[0]
+                                                          .toUpperCase()
+                                                    : '?',
+                                                style: const TextStyle(
+                                                  color: Color(0xFF8A573A),
+                                                  fontWeight: FontWeight.w700,
+                                                ),
+                                              )
+                                            : null,
                                       ),
                                       Positioned(
-                                        right: 0,
-                                        bottom: 0,
+                                        right: -2,
+                                        bottom: -2,
                                         child: UserFlagBadge(
-                                          countryCode: host.countryCode,
+                                          countryCode: activity.countryCode,
+                                          size: 22,
+                                          borderWidth: 2,
+                                          innerPadding: 2,
                                         ),
                                       ),
-                                      if (host.isOnline)
+                                      if (activity.unread > 0)
                                         Positioned(
-                                          right: 2,
-                                          bottom: 2,
+                                          top: -4,
+                                          right: -2,
                                           child: Container(
-                                            width: 14,
-                                            height: 14,
-                                            decoration: BoxDecoration(
-                                              color: const Color(0xFF37C35B),
+                                            width: 20,
+                                            height: 20,
+                                            decoration: const BoxDecoration(
+                                              color: Color(0xFFE34B57),
                                               shape: BoxShape.circle,
-                                              border: Border.all(
-                                                color: Colors.white,
-                                                width: 2,
+                                            ),
+                                            child: Center(
+                                              child: Text(
+                                                '${activity.unread}',
+                                                style: const TextStyle(
+                                                  color: Colors.white,
+                                                  fontSize: 11,
+                                                  fontWeight: FontWeight.w700,
+                                                ),
                                               ),
                                             ),
                                           ),
@@ -409,7 +760,7 @@ class _MessagesScreenState extends State<MessagesScreen> {
                                           children: [
                                             Expanded(
                                               child: Text(
-                                                host.name,
+                                                activity.name,
                                                 style: const TextStyle(
                                                   fontWeight: FontWeight.w700,
                                                   fontSize: 16,
@@ -417,25 +768,25 @@ class _MessagesScreenState extends State<MessagesScreen> {
                                               ),
                                             ),
                                             Text(
-                                              activity.timestamp,
+                                              activity.time,
                                               style: const TextStyle(
                                                 fontSize: 12,
-                                                color: Color(0xFF9B948D),
+                                                color: Color(0xFFAAA39C),
                                               ),
                                             ),
                                           ],
                                         ),
                                         const SizedBox(height: 4),
                                         Text(
-                                          activity.lastUpdate,
+                                          activity.message,
                                           maxLines: 1,
                                           overflow: TextOverflow.ellipsis,
                                           style: TextStyle(
                                             fontSize: 14,
-                                            color: activity.unread
-                                                ? const Color(0xFF2E2B28)
-                                                : const Color(0xFF8A847E),
-                                            fontWeight: activity.unread
+                                            color: activity.unread > 0
+                                                ? const Color(0xFF272421)
+                                                : const Color(0xFF89827C),
+                                            fontWeight: activity.unread > 0
                                                 ? FontWeight.w600
                                                 : FontWeight.w400,
                                           ),
@@ -450,9 +801,9 @@ class _MessagesScreenState extends State<MessagesScreen> {
                                             Container(
                                               padding:
                                                   const EdgeInsets.symmetric(
-                                                    horizontal: 8,
-                                                    vertical: 4,
-                                                  ),
+                                                horizontal: 8,
+                                                vertical: 4,
+                                              ),
                                               decoration: BoxDecoration(
                                                 color: typeColor.withValues(
                                                   alpha: 0.12,
@@ -464,7 +815,7 @@ class _MessagesScreenState extends State<MessagesScreen> {
                                                 mainAxisSize: MainAxisSize.min,
                                                 children: [
                                                   Icon(
-                                                    _typeIcon(activity, host),
+                                                    _typeIcon(activity.type),
                                                     size: 14,
                                                     color: typeColor,
                                                   ),
@@ -472,26 +823,63 @@ class _MessagesScreenState extends State<MessagesScreen> {
                                                   Text(
                                                     _typeLabel(activity.type),
                                                     style: TextStyle(
-                                                      fontSize: 12,
-                                                      color: typeColor,
+                                                      fontSize: 11,
                                                       fontWeight:
                                                           FontWeight.w700,
+                                                      color: typeColor,
                                                     ),
                                                   ),
                                                 ],
                                               ),
                                             ),
-                                            Text(
-                                              _activityStatusText(
-                                                activity,
-                                                host,
+                                            Container(
+                                              padding:
+                                                  const EdgeInsets.symmetric(
+                                                horizontal: 8,
+                                                vertical: 4,
                                               ),
+                                              decoration: BoxDecoration(
+                                                color: activity.status ==
+                                                        'active'
+                                                    ? const Color(0xFFEAF8EF)
+                                                    : const Color(0xFFF3F0EC),
+                                                borderRadius:
+                                                    BorderRadius.circular(999),
+                                              ),
+                                              child: Text(
+                                                activity.status == 'active'
+                                                    ? 'Active'
+                                                    : 'Archived',
+                                                style: TextStyle(
+                                                  fontSize: 11,
+                                                  fontWeight: FontWeight.w600,
+                                                  color: activity.status ==
+                                                          'active'
+                                                      ? const Color(0xFF2FA655)
+                                                      : const Color(0xFF8A837D),
+                                                ),
+                                              ),
+                                            ),
+                                            Text(
+                                              activity.status == 'active'
+                                                  ? (activity.remainingLabel ??
+                                                      'Realtime update aktif')
+                                                  : 'Archived activity',
                                               style: TextStyle(
                                                 fontSize: 12,
-                                                color: isCurrentlyActive
+                                                color: activity.status ==
+                                                        'active'
                                                     ? const Color(0xFF2FA655)
-                                                    : const Color(0xFFB2AAA1),
-                                                fontWeight: FontWeight.w600,
+                                                    : const Color(0xFF8A837D),
+                                                fontWeight: FontWeight.w700,
+                                              ),
+                                            ),
+                                            Text(
+                                              activity.trailingLabel,
+                                              style: const TextStyle(
+                                                fontSize: 12,
+                                                color: Color(0xFF2FA655),
+                                                fontWeight: FontWeight.w700,
                                               ),
                                             ),
                                           ],
@@ -499,16 +887,13 @@ class _MessagesScreenState extends State<MessagesScreen> {
                                       ],
                                     ),
                                   ),
-                                  if (activity.unread)
-                                    Container(
-                                      width: 8,
-                                      height: 8,
-                                      margin: const EdgeInsets.only(left: 8),
-                                      decoration: const BoxDecoration(
-                                        color: userAmberDark,
-                                        shape: BoxShape.circle,
-                                      ),
+                                  IconButton(
+                                    onPressed: () {},
+                                    icon: const Icon(
+                                      Icons.tune_rounded,
+                                      color: Color(0xFF8C857E),
                                     ),
+                                  ),
                                 ],
                               ),
                             ),
@@ -516,173 +901,10 @@ class _MessagesScreenState extends State<MessagesScreen> {
                         },
                       ),
                     ),
-                  ],
-                ),
-                if (selectedHost != null && selectedActivity != null)
-                  Positioned.fill(
-                    child: ColoredBox(
-                      color: const Color(0x80000000),
-                      child: Center(
-                        child: Container(
-                          margin: const EdgeInsets.symmetric(horizontal: 24),
-                          padding: const EdgeInsets.all(24),
-                          decoration: BoxDecoration(
-                            color: Colors.white,
-                            borderRadius: BorderRadius.circular(24),
-                          ),
-                          child: Column(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              Container(
-                                width: 64,
-                                height: 64,
-                                decoration: const BoxDecoration(
-                                  color: Color(0xFFFFEDD9),
-                                  shape: BoxShape.circle,
-                                ),
-                                child: Icon(
-                                  _typeIcon(selectedActivity!, selectedHost!),
-                                  size: 34,
-                                  color: const Color(0xFFD18734),
-                                ),
-                              ),
-                              const SizedBox(height: 14),
-                              Text(
-                                '${_typeLabel(selectedActivity!.type)} Archived',
-                                style: const TextStyle(
-                                  fontSize: 22,
-                                  fontWeight: FontWeight.w700,
-                                ),
-                              ),
-                              const SizedBox(height: 8),
-                              Text(
-                                'Your ${_typeLabel(selectedActivity!.type).toLowerCase()} activity with ${selectedHost!.name} has ended.${selectedActivity!.type == _UserActivityType.message ? ' Chat message hanya bisa dibuka dari H-3 sampai H+1 acara yang sudah accepted.' : ' Start again by paying coins for this feature.'}',
-                                textAlign: TextAlign.center,
-                                style: const TextStyle(
-                                  color: Color(0xFF817A74),
-                                ),
-                              ),
-                              const SizedBox(height: 18),
-                              Container(
-                                padding: const EdgeInsets.all(16),
-                                decoration: BoxDecoration(
-                                  gradient: const LinearGradient(
-                                    colors: [
-                                      Color(0xFFFFF3E4),
-                                      Color(0xFFFFE8D2),
-                                    ],
-                                  ),
-                                  borderRadius: BorderRadius.circular(18),
-                                ),
-                                child: Row(
-                                  children: [
-                                    CircleAvatar(
-                                      radius: 24,
-                                      backgroundImage: NetworkImage(
-                                        selectedHost!.imageUrl,
-                                      ),
-                                    ),
-                                    const SizedBox(width: 12),
-                                    Expanded(
-                                      child: Column(
-                                        crossAxisAlignment:
-                                            CrossAxisAlignment.start,
-                                        children: [
-                                          Text(
-                                            selectedHost!.name,
-                                            style: const TextStyle(
-                                              fontWeight: FontWeight.w700,
-                                            ),
-                                          ),
-                                          const SizedBox(height: 2),
-                                          Text(
-                                            'Restart ${_typeLabel(selectedActivity!.type).toLowerCase()}',
-                                            style: const TextStyle(
-                                              color: Color(0xFF847D76),
-                                              fontSize: 13,
-                                            ),
-                                          ),
-                                        ],
-                                      ),
-                                    ),
-                                    Text(
-                                      '🪙 ${selectedActivity!.coinCost}',
-                                      style: const TextStyle(
-                                        fontWeight: FontWeight.w700,
-                                        color: userAmberDark,
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                              ),
-                              const SizedBox(height: 18),
-                              SizedBox(
-                                width: double.infinity,
-                                child: FilledButton(
-                                  onPressed: () {
-                                    final host = selectedHost!;
-                                    final activity = selectedActivity!;
-                                    setState(() {
-                                      selectedHost = null;
-                                      selectedActivity = null;
-                                    });
-                                    if (activity.type ==
-                                        _UserActivityType.message) {
-                                      ScaffoldMessenger.of(
-                                        context,
-                                      ).showSnackBar(
-                                        const SnackBar(
-                                          content: Text(
-                                            'Chat message hanya bisa dibuka dalam rentang H-3 sampai H+1 dari schedule yang sudah accepted.',
-                                          ),
-                                        ),
-                                      );
-                                      return;
-                                    }
-                                    _openActivity(activity, host);
-                                  },
-                                  style: FilledButton.styleFrom(
-                                    backgroundColor: userAmberDark,
-                                    foregroundColor: Colors.white,
-                                    minimumSize: const Size.fromHeight(52),
-                                    shape: RoundedRectangleBorder(
-                                      borderRadius: BorderRadius.circular(16),
-                                    ),
-                                  ),
-                                  child: const Text('Pay Coins and Continue'),
-                                ),
-                              ),
-                              const SizedBox(height: 10),
-                              SizedBox(
-                                width: double.infinity,
-                                child: OutlinedButton(
-                                  onPressed: () => setState(() {
-                                    selectedHost = null;
-                                    selectedActivity = null;
-                                  }),
-                                  style: OutlinedButton.styleFrom(
-                                    minimumSize: const Size.fromHeight(48),
-                                    side: const BorderSide(
-                                      color: Color(0xFFE8E1D8),
-                                    ),
-                                    shape: RoundedRectangleBorder(
-                                      borderRadius: BorderRadius.circular(16),
-                                    ),
-                                  ),
-                                  child: const Text('Maybe Later'),
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                      ),
-                    ),
-                  ),
-              ],
             ),
-          ),
-        );
-      },
+          ],
+        ),
+      ),
     );
   }
 
@@ -690,12 +912,12 @@ class _MessagesScreenState extends State<MessagesScreen> {
     final isActive = _activeTab == value;
     return Expanded(
       child: InkWell(
-        borderRadius: BorderRadius.circular(14),
         onTap: () => setState(() => _activeTab = value),
+        borderRadius: BorderRadius.circular(14),
         child: Container(
           padding: const EdgeInsets.symmetric(vertical: 12),
           decoration: BoxDecoration(
-            color: isActive ? userAmberDark : const Color(0xFFF4EFE8),
+            color: isActive ? _userInboxHeaderStart : Colors.transparent,
             borderRadius: BorderRadius.circular(14),
           ),
           child: Text(
@@ -703,7 +925,7 @@ class _MessagesScreenState extends State<MessagesScreen> {
             textAlign: TextAlign.center,
             style: TextStyle(
               color: isActive ? Colors.white : const Color(0xFF6F6862),
-              fontWeight: FontWeight.w700,
+              fontWeight: FontWeight.w600,
             ),
           ),
         ),

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import 'core/auth/auth_session.dart';
+import 'core/services/chat_notification_service.dart';
 import 'screens/talent/talent_tab_shell.dart';
 import 'screens/talent/register_talent_screen.dart';
 import 'screens/shared/loading_splash.dart';
@@ -31,11 +32,15 @@ class _NoAnimationPageTransitionsBuilder extends PageTransitionsBuilder {
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await AuthSession.instance.restore();
+  await ChatNotificationService.instance.initialize();
   runApp(MyApp(initialRoute: AuthSession.instance.launchRoute));
 }
 
 class MyApp extends StatelessWidget {
   const MyApp({super.key, required this.initialRoute});
+
+  static final GlobalKey<NavigatorState> navigatorKey =
+      GlobalKey<NavigatorState>();
 
   final String initialRoute;
 
@@ -76,6 +81,7 @@ class MyApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
+      navigatorKey: navigatorKey,
       debugShowCheckedModeBanner: false,
       title: 'Talent Profile Demo',
       builder: (context, child) {

@@ -1,4 +1,8 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
+
+import '../../core/services/chat_service.dart';
 
 const Color userCreamBackground = Color(0xFFF5F1E8);
 const Color userAmber = Color(0xFF9A654D);
@@ -215,10 +219,67 @@ const List<DemoUserHost> demoUserHosts = [
   ),
 ];
 
-class UserBottomNav extends StatelessWidget {
+class UserBottomNav extends StatefulWidget {
   const UserBottomNav({super.key, required this.currentRoute});
 
   final String currentRoute;
+
+  @override
+  State<UserBottomNav> createState() => _UserBottomNavState();
+}
+
+class _UserBottomNavState extends State<UserBottomNav> {
+  StreamSubscription<void>? _sessionSubscription;
+  int _notificationCount = 0;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadNotificationCount();
+    _sessionSubscription = ChatService.realtime.sessionStream.listen((_) {
+      if (!mounted) {
+        return;
+      }
+      _loadNotificationCount(forceRefresh: true);
+    });
+    unawaited(ChatService.realtime.connect());
+  }
+
+  @override
+  void dispose() {
+    _sessionSubscription?.cancel();
+    super.dispose();
+  }
+
+  Future<void> _loadNotificationCount({bool forceRefresh = false}) async {
+    try {
+      final sessions = await ChatService.getChatSessions(
+        forceRefresh: forceRefresh,
+      );
+      if (!mounted) {
+        return;
+      }
+
+      final unreadMessages = sessions.fold<int>(
+        0,
+        (sum, session) => sum + session.unreadCount,
+      );
+      final pendingRooms = sessions.where((session) {
+        final status = session.status.trim().toLowerCase();
+        return session.isActiveNow &&
+            status == 'pending' &&
+            session.unreadCount == 0;
+      }).length;
+
+      setState(() {
+        _notificationCount = unreadMessages + pendingRooms;
+      });
+    } catch (_) {
+      if (!mounted) {
+        return;
+      }
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -260,7 +321,9 @@ class UserBottomNav extends StatelessWidget {
         child: Row(
           mainAxisAlignment: MainAxisAlignment.spaceAround,
           children: items.map((item) {
-            final isActive = currentRoute == item.route;
+            final isActive = widget.currentRoute == item.route;
+            final showNotification =
+                item.route == '/messages' && _notificationCount > 0;
             return InkWell(
               borderRadius: BorderRadius.circular(20),
               onTap: () {
@@ -273,19 +336,76 @@ class UserBottomNav extends StatelessWidget {
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    Container(
-                      padding: const EdgeInsets.all(10),
-                      decoration: BoxDecoration(
-                        color: isActive ? userAmberDark : Colors.transparent,
-                        borderRadius: BorderRadius.circular(14),
+                    if (showNotification)
+                      Container(
+                        margin: const EdgeInsets.only(bottom: 4),
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 8,
+                          vertical: 2,
+                        ),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFFF9E7D8),
+                          borderRadius: BorderRadius.circular(999),
+                        ),
+                        child: Text(
+                          'Activity',
+                          style: TextStyle(
+                            fontSize: 10,
+                            fontWeight: FontWeight.w700,
+                            color: isActive
+                                ? userAmberDark
+                                : const Color(0xFF8B5A3C),
+                          ),
+                        ),
                       ),
-                      child: Icon(
-                        item.icon,
-                        size: 20,
-                        color: isActive
-                            ? Colors.white
-                            : const Color(0xFF7F7A75),
-                      ),
+                    Stack(
+                      clipBehavior: Clip.none,
+                      children: [
+                        Container(
+                          padding: const EdgeInsets.all(10),
+                          decoration: BoxDecoration(
+                            color: isActive ? userAmberDark : Colors.transparent,
+                            borderRadius: BorderRadius.circular(14),
+                          ),
+                          child: Icon(
+                            item.icon,
+                            size: 20,
+                            color: isActive
+                                ? Colors.white
+                                : const Color(0xFF7F7A75),
+                          ),
+                        ),
+                        if (showNotification)
+                          Positioned(
+                            top: -4,
+                            right: -4,
+                            child: Container(
+                              constraints: const BoxConstraints(
+                                minWidth: 18,
+                                minHeight: 18,
+                              ),
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 4,
+                              ),
+                              decoration: const BoxDecoration(
+                                color: Color(0xFFE34B57),
+                                shape: BoxShape.circle,
+                              ),
+                              child: Center(
+                                child: Text(
+                                  _notificationCount > 99
+                                      ? '99+'
+                                      : '$_notificationCount',
+                                  style: const TextStyle(
+                                    color: Colors.white,
+                                    fontSize: 9,
+                                    fontWeight: FontWeight.w700,
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ),
+                      ],
                     ),
                     const SizedBox(height: 4),
                     Text(

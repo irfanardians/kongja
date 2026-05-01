@@ -396,7 +396,11 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
     );
   }
 
-  void _handleLogout() {
+  Future<void> _handleLogout() async {
+    await AuthService.logoutCurrentSession();
+    if (!mounted) {
+      return;
+    }
     Navigator.pushNamedAndRemoveUntil(context, '/login', (route) => false);
   }
 

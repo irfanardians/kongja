@@ -1351,9 +1351,16 @@ class _TalentProfileScreenState extends State<TalentProfileScreen> {
                       ),
                       icon: const Icon(Icons.logout),
                       label: const Text('Logout'),
-                      onPressed: () {
-                        // TODO: Logout logic
-                        Navigator.pushNamed(context, '/login');
+                      onPressed: () async {
+                        await AuthService.logoutCurrentSession();
+                        if (!context.mounted) {
+                          return;
+                        }
+                        Navigator.pushNamedAndRemoveUntil(
+                          context,
+                          '/login',
+                          (route) => false,
+                        );
                       },
                     ),
                   ),

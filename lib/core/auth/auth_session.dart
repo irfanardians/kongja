@@ -16,17 +16,32 @@ class AuthSession {
   static const _accessTokenKey = 'auth.access_token';
   static const _refreshTokenKey = 'auth.refresh_token';
   static const _roleKey = 'auth.role';
+  static const _accountIdKey = 'auth.account_id';
   static const _routeTargetDefaultKey = 'auth.route_target_default';
 
   String? _accessToken;
   String? _refreshToken;
   String? _role;
+  String? _accountId;
   String? _routeTargetDefault;
   Completer<bool>? _refreshCompleter;
 
   String? get accessToken => _accessToken;
   String? get refreshToken => _refreshToken;
   String? get role => _role;
+  String get accountId {
+    final storedAccountId = _accountId?.trim() ?? '';
+    if (storedAccountId.isNotEmpty) {
+      return storedAccountId;
+    }
+
+    final tokenAccountId = _accountIdFromToken(_accessToken);
+    if (tokenAccountId.isNotEmpty) {
+      _accountId = tokenAccountId;
+      unawaited(_persist());
+    }
+    return tokenAccountId;
+  }
   String? get routeTargetDefault => _routeTargetDefault;
   bool get isAuthenticated =>
       _accessToken != null && _accessToken!.trim().isNotEmpty;
@@ -57,13 +72,21 @@ class AuthSession {
     _accessToken = preferences.getString(_accessTokenKey);
     _refreshToken = preferences.getString(_refreshTokenKey);
     _role = preferences.getString(_roleKey);
+    _accountId = preferences.getString(_accountIdKey);
     _routeTargetDefault = preferences.getString(_routeTargetDefaultKey);
+
+    if ((_accountId?.trim().isEmpty ?? true)) {
+      _accountId = _accountIdFromToken(_accessToken);
+    }
   }
 
   void saveLogin(LoginResult result) {
     _accessToken = result.accessToken;
     _refreshToken = result.refreshToken;
     _role = result.role;
+    _accountId = result.accountId?.trim().isNotEmpty == true
+        ? result.accountId!.trim()
+        : _accountIdFromToken(result.accessToken);
     _routeTargetDefault = result.routeTargetDefault;
     ApiCacheStore.instance.clear();
     unawaited(_persist());
@@ -73,6 +96,7 @@ class AuthSession {
     _accessToken = null;
     _refreshToken = null;
     _role = null;
+    _accountId = null;
     _routeTargetDefault = null;
     ApiCacheStore.instance.clear();
     unawaited(_clearPersisted());
@@ -136,6 +160,9 @@ class AuthSession {
     _accessToken = updatedSession.accessToken;
     _refreshToken = updatedSession.refreshToken ?? _refreshToken;
     _role = updatedSession.role ?? _role;
+    _accountId = updatedSession.accountId?.trim().isNotEmpty == true
+      ? updatedSession.accountId!.trim()
+      : _accountIdFromToken(updatedSession.accessToken);
     _routeTargetDefault =
         updatedSession.routeTargetDefault ?? _routeTargetDefault;
     ApiCacheStore.instance.clear();
@@ -194,8 +221,46 @@ class AuthSession {
       accessToken: accessToken,
       refreshToken: _stringValue(data['refresh_token']),
       role: _stringValue(data['role']),
+      accountId: _stringValue(
+        data['account_id'] ??
+            data['user_id'] ??
+            data['id'] ??
+            (data['user'] is Map<String, dynamic>
+                ? (data['user'] as Map<String, dynamic>)['account_id']
+                : null),
+      ),
       routeTargetDefault: _stringValue(data['route_target_default']),
     );
+  }
+
+  String _accountIdFromToken(String? token) {
+    final trimmedToken = token?.trim() ?? '';
+    if (trimmedToken.isEmpty) {
+      return '';
+    }
+
+    final segments = trimmedToken.split('.');
+    if (segments.length < 2) {
+      return '';
+    }
+
+    try {
+      final normalizedPayload = base64Url.normalize(segments[1]);
+      final decodedPayload = utf8.decode(base64Url.decode(normalizedPayload));
+      final payload = jsonDecode(decodedPayload);
+      if (payload is! Map<String, dynamic>) {
+        return '';
+      }
+
+      return _stringValue(
+        payload['account_id'] ??
+            payload['user_id'] ??
+            payload['id'] ??
+            payload['sub'],
+      );
+    } catch (_) {
+      return '';
+    }
   }
 
   String _stringValue(dynamic value) {
@@ -210,6 +275,7 @@ class AuthSession {
     await preferences.setString(_accessTokenKey, _accessToken ?? '');
     await preferences.setString(_refreshTokenKey, _refreshToken ?? '');
     await preferences.setString(_roleKey, _role ?? '');
+    await preferences.setString(_accountIdKey, _accountId ?? '');
     await preferences.setString(
       _routeTargetDefaultKey,
       _routeTargetDefault ?? '',
@@ -221,6 +287,7 @@ class AuthSession {
     await preferences.remove(_accessTokenKey);
     await preferences.remove(_refreshTokenKey);
     await preferences.remove(_roleKey);
+    await preferences.remove(_accountIdKey);
     await preferences.remove(_routeTargetDefaultKey);
   }
 }
@@ -230,11 +297,13 @@ class _RefreshSessionResult {
     required this.accessToken,
     required this.refreshToken,
     required this.role,
+    required this.accountId,
     required this.routeTargetDefault,
   });
 
   final String accessToken;
   final String? refreshToken;
   final String? role;
+  final String? accountId;
   final String? routeTargetDefault;
 }

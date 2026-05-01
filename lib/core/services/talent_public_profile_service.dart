@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import 'api_client.dart';
 
 class TalentPublicProfileService {
@@ -16,14 +18,59 @@ class TalentPublicProfileService {
       );
     }
 
-    final decoded = await ApiClient.getJson(
-      '/talents/$trimmedAccountId',
-      useCache: true,
+    final decoded = await _getProfileJson(
+      trimmedAccountId,
       forceRefresh: forceRefresh,
-      maxAge: _cacheMaxAge,
     );
 
     return _parseProfile(decoded, trimmedAccountId);
+  }
+
+  static Future<dynamic> _getProfileJson(
+    String accountId, {
+    required bool forceRefresh,
+  }) async {
+    final primaryPath = '/talents/$accountId';
+    final fallbackPath = '/talent/$accountId';
+
+    final cachedPrimary = !forceRefresh
+        ? ApiClient.peekCachedJson(primaryPath, maxAge: _cacheMaxAge)
+        : null;
+    if (cachedPrimary != null) {
+      return cachedPrimary;
+    }
+
+    final cachedFallback = !forceRefresh
+        ? ApiClient.peekCachedJson(fallbackPath, maxAge: _cacheMaxAge)
+        : null;
+    if (cachedFallback != null) {
+      return cachedFallback;
+    }
+
+    final primaryResponse = await ApiClient.get(primaryPath, authorized: true);
+    if (primaryResponse.statusCode >= 200 && primaryResponse.statusCode < 300) {
+      final decoded = primaryResponse.body.isEmpty
+          ? null
+          : jsonDecode(primaryResponse.body);
+      ApiClient.invalidateCache(fallbackPath);
+      return decoded;
+    }
+
+    final fallbackResponse = await ApiClient.get(
+      fallbackPath,
+      authorized: true,
+    );
+    if (fallbackResponse.statusCode >= 200 && fallbackResponse.statusCode < 300) {
+      return fallbackResponse.body.isEmpty
+          ? null
+          : jsonDecode(fallbackResponse.body);
+    }
+
+    throw TalentPublicProfileException(
+      'Data talent tidak dapat dibaca. Server mengembalikan status '
+      '${primaryResponse.statusCode} pada $primaryPath dan '
+      '${fallbackResponse.statusCode} pada $fallbackPath.',
+    );
   }
 
   static TalentPublicProfileData _parseProfile(
@@ -69,6 +116,14 @@ class TalentPublicProfileService {
     ]);
     final city = _stringValue(data['city']);
     final country = _stringValue(data['country']);
+    final countryCode = _countryCodeValue([
+      data['country_code'],
+      _nestedValue(data['account'], 'country_code'),
+      _nestedValue(data['profile_summary'], 'country_code'),
+      _nestedValue(data['talent_information'], 'country_code'),
+      data['phone_country_code'],
+      _nestedValue(data['account'], 'phone_country_code'),
+    ]);
     final languages = _stringList(data['languages']);
     final specialties = _stringList(
       data['specialties'] ?? data['specialities'] ?? data['specialty'],
@@ -85,6 +140,7 @@ class TalentPublicProfileService {
       avatarUrl: avatarUrl,
       city: city,
       country: country,
+      countryCode: countryCode,
       bio: _firstNonEmpty([
         data['bio'],
         data['description'],
@@ -241,6 +297,40 @@ class TalentPublicProfileService {
     return '';
   }
 
+  static String _countryCodeValue(List<dynamic> values) {
+    final rawValue = _firstNonEmpty(values);
+    if (rawValue.isEmpty) {
+      return '';
+    }
+
+    final digits = rawValue.replaceAll(RegExp(r'\D'), '');
+    if (digits.isNotEmpty) {
+      const phoneCountryCodeMap = {
+        '62': 'ID',
+        '63': 'PH',
+        '66': 'TH',
+        '84': 'VN',
+        '81': 'JP',
+        '1': 'US',
+        '44': 'GB',
+        '60': 'MY',
+        '65': 'SG',
+        '82': 'KR',
+      };
+      final mappedCode = phoneCountryCodeMap[digits];
+      if (mappedCode != null) {
+        return mappedCode;
+      }
+    }
+
+    final letters = rawValue.replaceAll(RegExp(r'[^A-Za-z]'), '');
+    if (letters.length >= 2) {
+      return letters.substring(0, 2).toUpperCase();
+    }
+
+    return '';
+  }
+
   static String _firstNonEmpty(List<dynamic> values, {String fallback = ''}) {
     for (final value in values) {
       final stringValue = _stringValue(value);
@@ -338,6 +428,7 @@ class TalentPublicProfileData {
     required this.avatarUrl,
     required this.city,
     required this.country,
+    required this.countryCode,
     required this.bio,
     required this.age,
     required this.level,
@@ -357,6 +448,7 @@ class TalentPublicProfileData {
   final String avatarUrl;
   final String city;
   final String country;
+  final String countryCode;
   final String bio;
   final int age;
   final String level;

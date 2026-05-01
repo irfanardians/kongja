@@ -5,9 +5,15 @@ import 'package:http/http.dart' as http;
 import '../auth/auth_session.dart';
 import '../config/api_config.dart';
 import 'api_client.dart';
+import 'chat_service.dart';
 
 class AuthService {
   AuthService._();
+
+  static Future<void> logoutCurrentSession() async {
+    ChatService.realtime.disconnect();
+    AuthSession.instance.clear();
+  }
 
   static Future<void> registerUser(Map<String, dynamic> payload) async {
     final response = await ApiClient.postJson(
@@ -72,6 +78,7 @@ class AuthService {
 
     if (response.statusCode >= 200 && response.statusCode < 300) {
       final result = _parseLoginResult(response);
+      ChatService.realtime.disconnect();
       AuthSession.instance.saveLogin(result);
       return result;
     }
@@ -93,6 +100,7 @@ class AuthService {
               role: role,
               accessToken: data['access_token'] as String?,
               refreshToken: data['refresh_token'] as String?,
+              accountId: data['account_id'] as String?,
               routeTargetDefault: data['route_target_default'] as String?,
             );
           }
@@ -160,11 +168,13 @@ class LoginResult {
     required this.role,
     this.accessToken,
     this.refreshToken,
+    this.accountId,
     this.routeTargetDefault,
   });
 
   final String role;
   final String? accessToken;
   final String? refreshToken;
+  final String? accountId;
   final String? routeTargetDefault;
 }

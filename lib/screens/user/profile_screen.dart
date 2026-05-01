@@ -14,9 +14,12 @@
 
 import 'package:flutter/material.dart';
 
+import '../../core/services/auth_service.dart';
+import '../../core/services/chat_service.dart';
 import '../../core/services/talent_public_profile_service.dart';
 import '../../core/services/user_wallet_service.dart';
 import '../../shared/demo_schedule_store.dart';
+import '../shared/loading_splash.dart';
 import 'chat_screen.dart';
 import 'user_ui_shared.dart';
 
@@ -113,9 +116,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
         return;
       }
       setState(() => _isLoadingTalentProfile = false);
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(error.message)),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(error.message)));
     } catch (error) {
       if (!mounted) {
         return;
@@ -144,9 +147,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
     final portfolio = profile.portfolioUrls.isNotEmpty
         ? profile.portfolioUrls
         : fallbackHost?.portfolio ?? const [];
-    final location = [profile.city, profile.country]
-        .where((item) => item.trim().isNotEmpty)
-        .join(', ');
+    final location = [
+      profile.city,
+      profile.country,
+    ].where((item) => item.trim().isNotEmpty).join(', ');
     final servicePrices = profile.servicePrices.isNotEmpty
         ? profile.servicePrices
         : fallbackHost?.servicePrices ?? const {};
@@ -155,14 +159,14 @@ class _ProfileScreenState extends State<ProfileScreen> {
       id: profile.accountId.hashCode,
       accountId: profile.accountId,
       name: profile.stageName.trim().isNotEmpty
-        ? profile.stageName.trim()
-        : profile.displayName,
+          ? profile.stageName.trim()
+          : profile.displayName,
       age: profile.age,
       city: profile.city,
       countryCode: _countryCode(profile.country),
       description: profile.specialties.isNotEmpty
-        ? profile.specialties.take(2).join(' • ')
-        : description,
+          ? profile.specialties.take(2).join(' • ')
+          : description,
       imageUrl: profile.avatarUrl.isNotEmpty
           ? profile.avatarUrl
           : (fallbackHost?.imageUrl ?? ''),
@@ -467,15 +471,58 @@ class _ProfileScreenState extends State<ProfileScreen> {
               SizedBox(
                 width: double.infinity,
                 child: FilledButton(
-                  onPressed: () {
+                  onPressed: () async {
                     Navigator.pop(context);
                     if (type == 'chat') {
-                      Navigator.push(
-                        context,
-                        MaterialPageRoute<void>(
-                          builder: (context) => ChatScreen(host: host),
-                        ),
-                      );
+                      final talentAccountId =
+                          (_talentAccountId ?? host.accountId).trim();
+                      if (talentAccountId.isEmpty) {
+                        ScaffoldMessenger.of(this.context).showSnackBar(
+                          const SnackBar(
+                            content: Text(
+                              'ID talent tidak ditemukan. Coba buka ulang profil talent ini.',
+                            ),
+                          ),
+                        );
+                        return;
+                      }
+
+                      try {
+                        final session = await AppLoadingOverlay.of(this.context)
+                            .run(
+                              () => ChatService.createChatRoom(
+                                talentAccountId: talentAccountId,
+                              ),
+                              message: 'Membuat room chat...',
+                            );
+                        if (!mounted) {
+                          return;
+                        }
+
+                        await Navigator.push(
+                          this.context,
+                          MaterialPageRoute<void>(
+                            builder: (context) =>
+                                ChatScreen(host: host, session: session),
+                          ),
+                        );
+                      } on AuthServiceException catch (error) {
+                        if (!mounted) {
+                          return;
+                        }
+                        ScaffoldMessenger.of(
+                          this.context,
+                        ).showSnackBar(SnackBar(content: Text(error.message)));
+                      } catch (error) {
+                        if (!mounted) {
+                          return;
+                        }
+                        ScaffoldMessenger.of(this.context).showSnackBar(
+                          SnackBar(
+                            content: Text('Gagal membuat room chat: $error'),
+                          ),
+                        );
+                      }
                     } else {
                       ScaffoldMessenger.of(context).showSnackBar(
                         SnackBar(
@@ -634,7 +681,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
                             child: LinearProgressIndicator(minHeight: 3),
                           ),
                         Text(
-                          host.age > 0 ? '${host.name}, ${host.age}' : host.name,
+                          host.age > 0
+                              ? '${host.name}, ${host.age}'
+                              : host.name,
                           style: const TextStyle(
                             color: Colors.white,
                             fontSize: 40,
@@ -670,15 +719,21 @@ class _ProfileScreenState extends State<ProfileScreen> {
                                       vertical: 8,
                                     ),
                                     decoration: BoxDecoration(
-                                      color: Colors.white.withValues(alpha: 0.12),
+                                      color: Colors.white.withValues(
+                                        alpha: 0.12,
+                                      ),
                                       borderRadius: BorderRadius.circular(999),
                                       border: Border.all(
-                                        color: Colors.white.withValues(alpha: 0.14),
+                                        color: Colors.white.withValues(
+                                          alpha: 0.14,
+                                        ),
                                       ),
                                     ),
                                     child: Text(
                                       language,
-                                      style: const TextStyle(color: Colors.white),
+                                      style: const TextStyle(
+                                        color: Colors.white,
+                                      ),
                                     ),
                                   ),
                                 )
@@ -1044,7 +1099,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
             child: SizedBox(
               height: 184,
               child: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 16),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 12,
+                  vertical: 16,
+                ),
                 decoration: BoxDecoration(
                   gradient: LinearGradient(
                     colors: [
@@ -1055,7 +1113,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     end: Alignment.bottomCenter,
                   ),
                   borderRadius: BorderRadius.circular(18),
-                  border: Border.all(color: Colors.white.withValues(alpha: 0.18)),
+                  border: Border.all(
+                    color: Colors.white.withValues(alpha: 0.18),
+                  ),
                 ),
                 child: Column(
                   mainAxisAlignment: MainAxisAlignment.center,
