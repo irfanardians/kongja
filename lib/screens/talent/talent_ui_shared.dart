@@ -1,4 +1,9 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
+
+import '../../core/services/chat_service.dart';
+import '../../core/services/telephone_session_service.dart';
 
 const Color talentBg = Color(0xFFFFF8E1);
 const Color talentAmberDark = Color(0xFFB45309);
@@ -35,10 +40,97 @@ void navigateToTalentTab(BuildContext context, String route) {
   }
 }
 
-class TalentBottomNav extends StatelessWidget {
+class TalentBottomNav extends StatefulWidget {
   const TalentBottomNav({super.key, required this.currentRoute});
 
   final String currentRoute;
+
+  @override
+  State<TalentBottomNav> createState() => _TalentBottomNavState();
+}
+
+class _TalentBottomNavState extends State<TalentBottomNav> {
+  StreamSubscription<void>? _sessionSubscription;
+  Timer? _refreshTimer;
+  int _notificationCount = 0;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(_lifecycleObserver);
+    _loadNotificationCount();
+    _sessionSubscription = ChatService.realtime.sessionStream.listen((_) {
+      if (!mounted) {
+        return;
+      }
+      _loadNotificationCount(forceRefresh: true);
+    });
+    _refreshTimer = Timer.periodic(const Duration(seconds: 20), (_) {
+      if (!mounted) {
+        return;
+      }
+      _loadNotificationCount(forceRefresh: true);
+    });
+    unawaited(ChatService.realtime.connect());
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(_lifecycleObserver);
+    _sessionSubscription?.cancel();
+    _refreshTimer?.cancel();
+    super.dispose();
+  }
+
+  late final WidgetsBindingObserver _lifecycleObserver =
+      _TalentBottomNavLifecycleObserver(onResumed: () {
+        if (!mounted) {
+          return;
+        }
+        _loadNotificationCount(forceRefresh: true);
+      });
+
+  Future<void> _loadNotificationCount({bool forceRefresh = false}) async {
+    try {
+      final results = await Future.wait<dynamic>([
+        ChatService.getChatSessions(forceRefresh: forceRefresh),
+        TelephoneSessionService.getSessions(forceRefresh: forceRefresh),
+      ]);
+      final chatSessions = results[0] as List<ChatSessionSummary>;
+      final telephoneSessions = results[1] as List<TelephoneSessionListItem>;
+      if (!mounted) {
+        return;
+      }
+
+      final unreadMessages = chatSessions.fold<int>(
+        0,
+        (sum, session) => sum + session.unreadCount,
+      );
+      final telephoneAlerts = telephoneSessions.where((session) {
+        final status = session.status.trim().toLowerCase();
+        final callStatus = session.callStatus.trim().toLowerCase();
+        final isExpired = session.validUntil != null &&
+            DateTime.now().isAfter(session.validUntil!);
+        final isCompleted = status == 'completed' ||
+            session.closedReason.trim().toLowerCase() ==
+                'manual_end_transaction';
+        if (isExpired || isCompleted) {
+          return false;
+        }
+        return status == 'pending' ||
+            callStatus == 'ringing' ||
+            callStatus == 'ongoing';
+      }).length;
+
+      setState(() {
+        _notificationCount = unreadMessages + telephoneAlerts;
+      });
+    } catch (_) {
+      if (!mounted) {
+        return;
+      }
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -84,7 +176,9 @@ class TalentBottomNav extends StatelessWidget {
         child: Row(
           mainAxisAlignment: MainAxisAlignment.spaceAround,
           children: items.map((item) {
-            final isActive = currentRoute == item.route;
+            final isActive = widget.currentRoute == item.route;
+            final showNotification =
+                item.route == '/talent-messages' && _notificationCount > 0;
             return InkWell(
               borderRadius: BorderRadius.circular(18),
               onTap: () {
@@ -97,24 +191,59 @@ class TalentBottomNav extends StatelessWidget {
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    Container(
-                      padding: const EdgeInsets.all(10),
-                      decoration: BoxDecoration(
-                        gradient: isActive
-                            ? const LinearGradient(
-                                colors: [talentAmberDark, talentAmber],
-                              )
-                            : null,
-                        color: isActive ? null : Colors.transparent,
-                        borderRadius: BorderRadius.circular(14),
-                      ),
-                      child: Icon(
-                        item.icon,
-                        color: isActive
-                            ? Colors.white
-                            : const Color(0xFF7C746D),
-                        size: 20,
-                      ),
+                    Stack(
+                      clipBehavior: Clip.none,
+                      children: [
+                        Container(
+                          padding: const EdgeInsets.all(10),
+                          decoration: BoxDecoration(
+                            gradient: isActive
+                                ? const LinearGradient(
+                                    colors: [talentAmberDark, talentAmber],
+                                  )
+                                : null,
+                            color: isActive ? null : Colors.transparent,
+                            borderRadius: BorderRadius.circular(14),
+                          ),
+                          child: Icon(
+                            item.icon,
+                            color: isActive
+                                ? Colors.white
+                                : const Color(0xFF7C746D),
+                            size: 20,
+                          ),
+                        ),
+                        if (showNotification)
+                          Positioned(
+                            top: -4,
+                            right: -4,
+                            child: Container(
+                              constraints: const BoxConstraints(
+                                minWidth: 18,
+                                minHeight: 18,
+                              ),
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 4,
+                              ),
+                              decoration: const BoxDecoration(
+                                color: Color(0xFFE34B57),
+                                shape: BoxShape.circle,
+                              ),
+                              child: Center(
+                                child: Text(
+                                  _notificationCount > 99
+                                      ? '99+'
+                                      : '$_notificationCount',
+                                  style: const TextStyle(
+                                    color: Colors.white,
+                                    fontSize: 9,
+                                    fontWeight: FontWeight.w700,
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ),
+                      ],
                     ),
                     const SizedBox(height: 4),
                     Text(
@@ -260,4 +389,17 @@ class _TalentNavItem {
   final IconData icon;
   final String label;
   final String route;
+}
+
+class _TalentBottomNavLifecycleObserver with WidgetsBindingObserver {
+  _TalentBottomNavLifecycleObserver({required this.onResumed});
+
+  final VoidCallback onResumed;
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      onResumed();
+    }
+  }
 }

@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "337178367552",
+    "project_id": "kongja-notif",
+    "storage_bucket": "kongja-notif.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:337178367552:android:8608fe82d4d4b5ba5df1a5",
+        "android_client_info": {
+          "package_name": "com.kongja.apps"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyD6sGNfE7zUvlhGFK8ZC7OStNXpxDeLroI"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

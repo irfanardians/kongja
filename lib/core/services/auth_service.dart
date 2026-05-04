@@ -5,12 +5,14 @@ import 'package:http/http.dart' as http;
 import '../auth/auth_session.dart';
 import '../config/api_config.dart';
 import 'api_client.dart';
+import 'chat_notification_service.dart';
 import 'chat_service.dart';
 
 class AuthService {
   AuthService._();
 
   static Future<void> logoutCurrentSession() async {
+    await ChatNotificationService.instance.revokePushRegistration();
     ChatService.realtime.disconnect();
     AuthSession.instance.clear();
   }
@@ -80,6 +82,7 @@ class AuthService {
       final result = _parseLoginResult(response);
       ChatService.realtime.disconnect();
       AuthSession.instance.saveLogin(result);
+      await ChatNotificationService.instance.refreshPushRegistration();
       return result;
     }
 

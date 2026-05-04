@@ -111,6 +111,27 @@ class ApiClient {
     );
   }
 
+  static Future<http.Response> patchJson(
+    String path, {
+    Map<String, dynamic>? body,
+    Map<String, dynamic>? queryParameters,
+    Map<String, String>? headers,
+    bool authorized = false,
+  }) {
+    final uri = ApiConfig.uri(path, queryParameters: queryParameters);
+    final encodedBody = body == null ? null : jsonEncode(body);
+    return _sendWithAuthRetry(
+      authorized: authorized,
+      headers: headers,
+      includeJsonContentType: true,
+      send: (resolvedHeaders) => http.patch(
+        uri,
+        headers: resolvedHeaders,
+        body: encodedBody,
+      ),
+    );
+  }
+
   static Future<http.Response> delete(
     String path, {
     Map<String, dynamic>? queryParameters,

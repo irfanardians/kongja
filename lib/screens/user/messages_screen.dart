@@ -4,9 +4,11 @@ import 'package:flutter/material.dart';
 
 import '../../core/config/api_config.dart';
 import '../../core/services/chat_service.dart';
+import '../../core/services/telephone_session_service.dart';
 import '../../core/services/talent_public_profile_service.dart';
 import '../shared/activity_session_screen.dart';
 import '../shared/loading_splash.dart';
+import '../shared/telephone_session_screen.dart';
 import 'chat_screen.dart';
 import 'user_ui_shared.dart';
 
@@ -31,6 +33,7 @@ class _UserActivity {
     this.countryCode = 'US',
     this.remainingLabel,
     this.chatSession,
+    this.telephoneSession,
     this.host,
   });
 
@@ -47,6 +50,7 @@ class _UserActivity {
   final String countryCode;
   final String? remainingLabel;
   final ChatSessionSummary? chatSession;
+  final TelephoneSessionListItem? telephoneSession;
   final DemoUserHost? host;
 }
 
@@ -62,7 +66,9 @@ class MessagesScreen extends StatefulWidget {
 class _MessagesScreenState extends State<MessagesScreen> {
   final TextEditingController _searchController = TextEditingController();
   StreamSubscription<void>? _sessionSubscription;
+  Timer? _refreshTimer;
   List<ChatSessionSummary> _chatSessions = const [];
+  List<TelephoneSessionListItem> _telephoneSessions = const [];
   Map<String, TalentPublicProfileData> _talentProfilesByAccountId = const {};
   bool _isLoadingSessions = false;
   String _activeTab = 'all';
@@ -127,29 +133,58 @@ class _MessagesScreenState extends State<MessagesScreen> {
   @override
   void initState() {
     super.initState();
-    _loadChatSessions();
+    WidgetsBinding.instance.addObserver(_lifecycleObserver);
+    userTabRouteNotifier.addListener(_handleTabVisibilityChanged);
+    _loadActivities();
     _sessionSubscription = ChatService.realtime.sessionStream.listen((_) {
       if (!mounted) {
         return;
       }
-      _loadChatSessions(forceRefresh: true);
+      _loadActivities(forceRefresh: true);
+    });
+    _refreshTimer = Timer.periodic(const Duration(seconds: 20), (_) {
+      if (!mounted || userTabRouteNotifier.value != '/messages') {
+        return;
+      }
+      _loadActivities(forceRefresh: true);
     });
     unawaited(ChatService.realtime.connect());
   }
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(_lifecycleObserver);
+    userTabRouteNotifier.removeListener(_handleTabVisibilityChanged);
     _sessionSubscription?.cancel();
+    _refreshTimer?.cancel();
     _searchController.dispose();
     super.dispose();
   }
 
-  Future<void> _loadChatSessions({bool forceRefresh = false}) async {
+  late final WidgetsBindingObserver _lifecycleObserver =
+      _MessagesLifecycleObserver(onResumed: () {
+        if (!mounted) {
+          return;
+        }
+        _loadActivities(forceRefresh: true);
+      });
+
+  void _handleTabVisibilityChanged() {
+    if (!mounted || userTabRouteNotifier.value != '/messages') {
+      return;
+    }
+    _loadActivities(forceRefresh: true);
+  }
+
+  Future<void> _loadActivities({bool forceRefresh = false}) async {
     setState(() => _isLoadingSessions = true);
     try {
-      final sessions = await ChatService.getChatSessions(
-        forceRefresh: forceRefresh,
-      );
+      final results = await Future.wait<dynamic>([
+        ChatService.getChatSessions(forceRefresh: forceRefresh),
+        TelephoneSessionService.getSessions(forceRefresh: forceRefresh),
+      ]);
+      final sessions = results[0] as List<ChatSessionSummary>;
+      final telephoneSessions = results[1] as List<TelephoneSessionListItem>;
       final talentProfilesByAccountId = await _loadTalentProfilesForSessions(
         sessions,
         forceRefresh: forceRefresh,
@@ -160,6 +195,7 @@ class _MessagesScreenState extends State<MessagesScreen> {
 
       setState(() {
         _chatSessions = sessions;
+        _telephoneSessions = telephoneSessions;
         _talentProfilesByAccountId = talentProfilesByAccountId;
         _isLoadingSessions = false;
       });
@@ -351,6 +387,7 @@ class _MessagesScreenState extends State<MessagesScreen> {
 
   _UserActivityType _activityTypeFromChannel(String channelType) {
     switch (channelType.trim().toLowerCase()) {
+      case 'telephone':
       case 'voice':
         return _UserActivityType.phone;
       case 'video':
@@ -358,6 +395,46 @@ class _MessagesScreenState extends State<MessagesScreen> {
       default:
         return _UserActivityType.message;
     }
+  }
+
+  _UserActivity _telephoneActivityFromSession(TelephoneSessionListItem session) {
+    final now = DateTime.now();
+    final isExpired = session.validUntil != null && now.isAfter(session.validUntil!);
+    final isCompleted = session.status.trim().toLowerCase() == 'completed' ||
+        session.closedReason.trim().toLowerCase() == 'manual_end_transaction';
+    final isArchived = isExpired || isCompleted;
+
+    final message = switch (session.callStatus.trim().toLowerCase()) {
+      'ringing' => 'Sedang memanggil talent.',
+      'ongoing' => 'Telephone call sedang aktif.',
+      'ended' => 'Panggilan selesai, kuota masih bisa dipakai.',
+      _ => isArchived
+          ? 'Sesi telephone sudah tidak aktif.'
+          : (session.status.trim().toLowerCase() == 'pending'
+                ? 'Menunggu konfirmasi talent.'
+                : 'Sesi telephone siap dipakai.'),
+    };
+
+    return _UserActivity(
+      id: session.roomId.hashCode,
+      name: session.counterpartName.trim().isNotEmpty
+          ? session.counterpartName
+          : 'Telephone Talent',
+      message: message,
+      time: _activityTimeLabel(session.updatedAt),
+      avatar: session.counterpartAvatarUrl.trim(),
+      unread: 0,
+      status: isArchived ? 'archived' : 'active',
+      trailingLabel: isArchived ? 'Telephone archived' : 'Telephone session',
+      type: _UserActivityType.phone,
+      countryCode: session.counterpartCountryCode.trim().isNotEmpty
+          ? session.counterpartCountryCode.trim().toUpperCase()
+          : 'US',
+      remainingLabel: isExpired
+          ? 'Sesi hangus 24 jam'
+          : 'Sisa ${_durationLabel(session.remainingDurationSeconds)}',
+      telephoneSession: session,
+    );
   }
 
   _UserActivity _chatActivityFromSession(ChatSessionSummary session) {
@@ -483,19 +560,29 @@ class _MessagesScreenState extends State<MessagesScreen> {
           ),
         );
       case _UserActivityType.phone:
+        final telephoneSession = activity.telephoneSession;
+        if (telephoneSession == null) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Session telephone untuk aktivitas ini belum tersedia.'),
+            ),
+          );
+          return;
+        }
         await Navigator.of(context).push(
           buildLoadingSplashRoute<void>(
             settings: const RouteSettings(name: '/phone-session'),
-            builder: (context) => ActivitySessionScreen(
-              peerName: activity.name,
-              peerAvatar: activity.avatar,
-              sessionMode: ActivitySessionMode.phone,
-              contextLabel: 'Phone session with ${activity.name}',
-              statusLabel: 'Phone call is active',
-              trailingLabel: activity.trailingLabel,
+            builder: (context) => TelephoneSessionScreen(
+              roomId: telephoneSession.roomId,
+              fallbackPeerName: activity.name,
+              fallbackPeerAvatar: activity.avatar,
             ),
           ),
         );
+        if (!mounted) {
+          return;
+        }
+        await _loadActivities(forceRefresh: true);
       case _UserActivityType.video:
         await Navigator.of(context).push(
           buildLoadingSplashRoute<void>(
@@ -546,12 +633,39 @@ class _MessagesScreenState extends State<MessagesScreen> {
     }
   }
 
+  String _activityTimeLabel(DateTime? value) {
+    if (value == null) {
+      return 'Baru saja';
+    }
+
+    final difference = DateTime.now().difference(value);
+    if (difference.inMinutes < 1) {
+      return 'Baru saja';
+    }
+    if (difference.inHours < 1) {
+      return '${difference.inMinutes} min ago';
+    }
+    if (difference.inDays < 1) {
+      return '${difference.inHours} hr ago';
+    }
+    return '${difference.inDays} day ago';
+  }
+
+  String _durationLabel(int totalSeconds) {
+    final minutes = (totalSeconds / 60).ceil();
+    if (minutes <= 0) {
+      return '00 min';
+    }
+    return '$minutes min';
+  }
+
   @override
   Widget build(BuildContext context) {
     final query = _searchController.text.toLowerCase();
     final allActivities = <_UserActivity>[
+      ..._telephoneSessions.map(_telephoneActivityFromSession),
       ..._chatSessions.map(_chatActivityFromSession),
-      ..._activities,
+      ..._activities.where((activity) => activity.type != _UserActivityType.phone),
     ];
     final filtered = allActivities.where((activity) {
       final matchesTab = _activeTab == 'all' || activity.status == _activeTab;
@@ -648,7 +762,7 @@ class _MessagesScreenState extends State<MessagesScreen> {
                   ? const Center(child: CircularProgressIndicator())
                   : filtered.isEmpty
                   ? RefreshIndicator(
-                      onRefresh: () => _loadChatSessions(forceRefresh: true),
+                      onRefresh: () => _loadActivities(forceRefresh: true),
                       child: ListView(
                         padding: const EdgeInsets.fromLTRB(24, 0, 24, 24),
                         children: const [
@@ -663,7 +777,7 @@ class _MessagesScreenState extends State<MessagesScreen> {
                       ),
                     )
                   : RefreshIndicator(
-                      onRefresh: () => _loadChatSessions(forceRefresh: true),
+                      onRefresh: () => _loadActivities(forceRefresh: true),
                       child: ListView.separated(
                         padding: const EdgeInsets.fromLTRB(24, 0, 24, 24),
                         itemCount: filtered.length,
@@ -931,5 +1045,18 @@ class _MessagesScreenState extends State<MessagesScreen> {
         ),
       ),
     );
+  }
+}
+
+class _MessagesLifecycleObserver with WidgetsBindingObserver {
+  _MessagesLifecycleObserver({required this.onResumed});
+
+  final VoidCallback onResumed;
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      onResumed();
+    }
   }
 }

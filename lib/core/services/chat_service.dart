@@ -90,6 +90,66 @@ class ChatService {
     );
   }
 
+  static Future<ChatSessionSummary> createCallSession({
+    required String talentAccountId,
+    required String channelType,
+    int durationMinutes = 60,
+  }) async {
+    final trimmedTalentAccountId = talentAccountId.trim();
+    final normalizedChannelType = _normalizeChannelType(channelType);
+    final requestChannelType = normalizedChannelType == 'voice'
+        ? 'telephone'
+        : normalizedChannelType;
+    if (trimmedTalentAccountId.isEmpty) {
+      throw const AuthServiceException('ID talent tidak ditemukan.');
+    }
+
+    if (normalizedChannelType != 'voice' && normalizedChannelType != 'video') {
+      throw AuthServiceException(
+        'Jenis call "$channelType" belum didukung.',
+      );
+    }
+
+    final response = await ApiClient.postJson(
+      '/meet-requests',
+      body: {
+        'talent_account_id': trimmedTalentAccountId,
+        'channel_type': requestChannelType,
+        'duration_minutes': durationMinutes,
+      },
+      authorized: true,
+    );
+
+    if (response.statusCode < 200 || response.statusCode >= 300) {
+      throw AuthServiceException(
+        _extractMessage(
+          response,
+          fallbackPrefix: 'Gagal membuat sesi ${normalizedChannelType == 'voice' ? 'voice call' : 'video call'}',
+        ),
+      );
+    }
+
+    invalidateSessionCache();
+
+    final decoded = response.body.isEmpty ? null : jsonDecode(response.body);
+    final directSession = _parseSessionFromAny(decoded);
+    if (directSession != null && directSession.roomId.isNotEmpty) {
+      return directSession;
+    }
+
+    final sessions = await getChatSessions(forceRefresh: true);
+    for (final session in sessions) {
+      if (session.counterpartAccountId == trimmedTalentAccountId &&
+          _normalizeChannelType(session.channelType) == normalizedChannelType) {
+        return session;
+      }
+    }
+
+    throw AuthServiceException(
+      'Sesi ${normalizedChannelType == 'voice' ? 'voice call' : 'video call'} berhasil dibuat tetapi data session tidak ditemukan.',
+    );
+  }
+
   static Future<List<ChatSessionSummary>> getChatSessions({
     bool forceRefresh = false,
   }) async {
@@ -779,6 +839,7 @@ class ChatService {
   static String _normalizeChannelType(String value) {
     final normalized = value.trim().toLowerCase();
     switch (normalized) {
+      case 'telephone':
       case 'voice_call':
       case 'call':
       case 'voice':

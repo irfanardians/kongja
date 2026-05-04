@@ -16,10 +16,12 @@ import 'package:flutter/material.dart';
 
 import '../../core/services/auth_service.dart';
 import '../../core/services/chat_service.dart';
+import '../../core/services/telephone_session_service.dart';
 import '../../core/services/talent_public_profile_service.dart';
 import '../../core/services/user_wallet_service.dart';
 import '../../shared/demo_schedule_store.dart';
 import '../shared/loading_splash.dart';
+import '../shared/telephone_session_screen.dart';
 import 'chat_screen.dart';
 import 'user_ui_shared.dart';
 
@@ -520,6 +522,66 @@ class _ProfileScreenState extends State<ProfileScreen> {
                         ScaffoldMessenger.of(this.context).showSnackBar(
                           SnackBar(
                             content: Text('Gagal membuat room chat: $error'),
+                          ),
+                        );
+                      }
+                    } else if (type == 'voice') {
+                      final talentAccountId =
+                          (_talentAccountId ?? host.accountId).trim();
+                      if (talentAccountId.isEmpty) {
+                        ScaffoldMessenger.of(this.context).showSnackBar(
+                          const SnackBar(
+                            content: Text(
+                              'ID talent tidak ditemukan. Coba buka ulang profil talent ini.',
+                            ),
+                          ),
+                        );
+                        return;
+                      }
+
+                      try {
+                        final session = await AppLoadingOverlay.of(this.context).run(
+                          () => TelephoneSessionService.createOrReuseSession(
+                            talentAccountId: talentAccountId,
+                          ),
+                          message: 'Membuat sesi telephone...',
+                        );
+                        if (!mounted) {
+                          return;
+                        }
+
+                        final peerName = session.counterpartName.trim().isNotEmpty
+                            ? session.counterpartName
+                            : host.name;
+                        final peerAvatar =
+                            session.counterpartAvatarUrl.trim().isNotEmpty
+                            ? session.counterpartAvatarUrl
+                            : host.imageUrl;
+
+                        await Navigator.push(
+                          this.context,
+                          MaterialPageRoute<void>(
+                            builder: (context) => TelephoneSessionScreen(
+                              roomId: session.roomId,
+                              fallbackPeerName: peerName,
+                              fallbackPeerAvatar: peerAvatar,
+                            ),
+                          ),
+                        );
+                      } on AuthServiceException catch (error) {
+                        if (!mounted) {
+                          return;
+                        }
+                        ScaffoldMessenger.of(
+                          this.context,
+                        ).showSnackBar(SnackBar(content: Text(error.message)));
+                      } catch (error) {
+                        if (!mounted) {
+                          return;
+                        }
+                        ScaffoldMessenger.of(this.context).showSnackBar(
+                          SnackBar(
+                            content: Text('Gagal membuat sesi telephone: $error'),
                           ),
                         );
                       }

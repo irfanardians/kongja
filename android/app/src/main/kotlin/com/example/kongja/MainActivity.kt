@@ -1,4 +1,4 @@
-package com.example.kongja
+package com.kongja.apps
 
 import io.flutter.embedding.android.FlutterActivity
 

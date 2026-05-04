@@ -3,7 +3,9 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 
 import '../../core/services/chat_service.dart';
+import '../../core/services/telephone_session_service.dart';
 import '../shared/activity_session_screen.dart';
+import '../shared/telephone_session_screen.dart';
 import '../user/user_ui_shared.dart';
 import '../shared/loading_splash.dart';
 import 'talent_chat_screen.dart';
@@ -25,6 +27,7 @@ class _TalentActivity {
     this.countryCode = 'US',
     this.remainingLabel,
     this.chatSession,
+    this.telephoneSession,
   });
 
   final int id;
@@ -39,6 +42,7 @@ class _TalentActivity {
   final String countryCode;
   final String? remainingLabel;
   final ChatSessionSummary? chatSession;
+  final TelephoneSessionListItem? telephoneSession;
 }
 
 class TalentMessagesScreen extends StatefulWidget {
@@ -54,7 +58,9 @@ class _TalentMessagesScreenState extends State<TalentMessagesScreen> {
   String activeTab = 'all';
   final TextEditingController _searchController = TextEditingController();
   StreamSubscription<void>? _sessionSubscription;
+  Timer? _refreshTimer;
   List<ChatSessionSummary> _chatSessions = const [];
+  List<TelephoneSessionListItem> _telephoneSessions = const [];
   bool _isLoadingSessions = false;
 
   final activities = const [
@@ -103,35 +109,65 @@ class _TalentMessagesScreenState extends State<TalentMessagesScreen> {
   @override
   void initState() {
     super.initState();
-    _loadChatSessions();
+    WidgetsBinding.instance.addObserver(_lifecycleObserver);
+    talentTabRouteNotifier.addListener(_handleTabVisibilityChanged);
+    _loadActivities();
     _sessionSubscription = ChatService.realtime.sessionStream.listen((_) {
       if (!mounted) {
         return;
       }
-      _loadChatSessions(forceRefresh: true);
+      _loadActivities(forceRefresh: true);
+    });
+    _refreshTimer = Timer.periodic(const Duration(seconds: 20), (_) {
+      if (!mounted || talentTabRouteNotifier.value != '/talent-messages') {
+        return;
+      }
+      _loadActivities(forceRefresh: true);
     });
     unawaited(ChatService.realtime.connect());
   }
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(_lifecycleObserver);
+    talentTabRouteNotifier.removeListener(_handleTabVisibilityChanged);
     _sessionSubscription?.cancel();
+    _refreshTimer?.cancel();
     _searchController.dispose();
     super.dispose();
   }
 
-  Future<void> _loadChatSessions({bool forceRefresh = false}) async {
+  late final WidgetsBindingObserver _lifecycleObserver =
+      _TalentMessagesLifecycleObserver(onResumed: () {
+        if (!mounted) {
+          return;
+        }
+        _loadActivities(forceRefresh: true);
+      });
+
+  void _handleTabVisibilityChanged() {
+    if (!mounted || talentTabRouteNotifier.value != '/talent-messages') {
+      return;
+    }
+    _loadActivities(forceRefresh: true);
+  }
+
+  Future<void> _loadActivities({bool forceRefresh = false}) async {
     setState(() => _isLoadingSessions = true);
     try {
-      final sessions = await ChatService.getChatSessions(
-        forceRefresh: forceRefresh,
-      );
+      final results = await Future.wait<dynamic>([
+        ChatService.getChatSessions(forceRefresh: forceRefresh),
+        TelephoneSessionService.getSessions(forceRefresh: forceRefresh),
+      ]);
+      final sessions = results[0] as List<ChatSessionSummary>;
+      final telephoneSessions = results[1] as List<TelephoneSessionListItem>;
       if (!mounted) {
         return;
       }
 
       setState(() {
         _chatSessions = sessions;
+        _telephoneSessions = telephoneSessions;
         _isLoadingSessions = false;
       });
     } catch (_) {
@@ -182,6 +218,7 @@ class _TalentMessagesScreenState extends State<TalentMessagesScreen> {
 
   _TalentActivityType _activityTypeFromChannel(String channelType) {
     switch (channelType.trim().toLowerCase()) {
+      case 'telephone':
       case 'voice':
         return _TalentActivityType.phone;
       case 'video':
@@ -189,6 +226,46 @@ class _TalentMessagesScreenState extends State<TalentMessagesScreen> {
       default:
         return _TalentActivityType.message;
     }
+  }
+
+  _TalentActivity _telephoneActivityFromSession(TelephoneSessionListItem session) {
+    final now = DateTime.now();
+    final isExpired = session.validUntil != null && now.isAfter(session.validUntil!);
+    final isCompleted = session.status.trim().toLowerCase() == 'completed' ||
+        session.closedReason.trim().toLowerCase() == 'manual_end_transaction';
+    final isArchived = isExpired || isCompleted;
+
+    final message = switch (session.callStatus.trim().toLowerCase()) {
+      'ringing' => 'User sedang memanggil.',
+      'ongoing' => 'Telephone call sedang aktif.',
+      'ended' => 'Panggilan selesai, kuota masih tersisa.',
+      _ => isArchived
+          ? 'Sesi telephone sudah tidak aktif.'
+          : (session.status.trim().toLowerCase() == 'pending'
+                ? 'Menunggu konfirmasi talent.'
+                : 'Sesi telephone siap dipakai.'),
+    };
+
+    return _TalentActivity(
+      id: session.roomId.hashCode,
+      name: session.counterpartName.trim().isNotEmpty
+          ? session.counterpartName
+          : 'Telephone User',
+      message: message,
+      time: _activityTimeLabel(session.updatedAt),
+      avatar: session.counterpartAvatarUrl,
+      unread: 0,
+      status: isArchived ? 'archived' : 'active',
+      lastEarning: isArchived ? 'Telephone archived' : 'Telephone session',
+      type: _TalentActivityType.phone,
+      countryCode: session.counterpartCountryCode.trim().isNotEmpty
+          ? session.counterpartCountryCode.trim().toUpperCase()
+          : 'US',
+      remainingLabel: isExpired
+          ? 'Sesi hangus 24 jam'
+          : 'Sisa ${_durationLabel(session.remainingDurationSeconds)}',
+      telephoneSession: session,
+    );
   }
 
   Future<void> _handleActivityTap(_TalentActivity activity) async {
@@ -221,19 +298,29 @@ class _TalentMessagesScreenState extends State<TalentMessagesScreen> {
           ),
         );
       case _TalentActivityType.phone:
+        final telephoneSession = activity.telephoneSession;
+        if (telephoneSession == null) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Session telephone untuk aktivitas ini belum tersedia.'),
+            ),
+          );
+          return;
+        }
         await Navigator.of(context).push(
           buildLoadingSplashRoute<void>(
             settings: const RouteSettings(name: '/talent-phone-session'),
-            builder: (context) => ActivitySessionScreen(
-              peerName: activity.name,
-              peerAvatar: activity.avatar,
-              sessionMode: ActivitySessionMode.phone,
-              contextLabel: 'Phone session with ${activity.name}',
-              statusLabel: 'Phone call is active',
-              trailingLabel: activity.lastEarning,
+            builder: (context) => TelephoneSessionScreen(
+              roomId: telephoneSession.roomId,
+              fallbackPeerName: activity.name,
+              fallbackPeerAvatar: activity.avatar,
             ),
           ),
         );
+        if (!mounted) {
+          return;
+        }
+        await _loadActivities(forceRefresh: true);
       case _TalentActivityType.video:
         await Navigator.of(context).push(
           buildLoadingSplashRoute<void>(
@@ -288,12 +375,40 @@ class _TalentMessagesScreenState extends State<TalentMessagesScreen> {
     }
   }
 
+  String _activityTimeLabel(DateTime? value) {
+    if (value == null) {
+      return 'Baru saja';
+    }
+
+    final difference = DateTime.now().difference(value);
+    if (difference.inMinutes < 1) {
+      return 'Baru saja';
+    }
+    if (difference.inHours < 1) {
+      return '${difference.inMinutes} min ago';
+    }
+    if (difference.inDays < 1) {
+      return '${difference.inHours} hr ago';
+    }
+    return '${difference.inDays} day ago';
+  }
+
+  String _durationLabel(int totalSeconds) {
+    final minutes = (totalSeconds / 60).ceil();
+    if (minutes <= 0) {
+      return '00 min';
+    }
+    return '$minutes min';
+  }
+
   @override
   Widget build(BuildContext context) {
     final query = _searchController.text.toLowerCase();
-    final allActivities = _chatSessions.isNotEmpty
-        ? _chatSessions.map(_chatActivityFromSession).toList(growable: false)
-        : activities;
+    final allActivities = <_TalentActivity>[
+      ..._telephoneSessions.map(_telephoneActivityFromSession),
+      ..._chatSessions.map(_chatActivityFromSession),
+      ...activities.where((activity) => activity.type != _TalentActivityType.phone),
+    ];
     final filtered = allActivities.where((activity) {
       final matchesTab = activeTab == 'all' || activity.status == activeTab;
       final matchesQuery =
@@ -380,8 +495,8 @@ class _TalentMessagesScreenState extends State<TalentMessagesScreen> {
                       ? const Center(child: CircularProgressIndicator())
                       : filtered.isEmpty
                       ? RefreshIndicator(
-                          onRefresh: () =>
-                              _loadChatSessions(forceRefresh: true),
+                            onRefresh: () =>
+                              _loadActivities(forceRefresh: true),
                           child: ListView(
                             padding: const EdgeInsets.fromLTRB(24, 0, 24, 24),
                             children: const [
@@ -396,8 +511,8 @@ class _TalentMessagesScreenState extends State<TalentMessagesScreen> {
                           ),
                         )
                       : RefreshIndicator(
-                          onRefresh: () =>
-                              _loadChatSessions(forceRefresh: true),
+                            onRefresh: () =>
+                              _loadActivities(forceRefresh: true),
                           child: ListView.separated(
                             padding: const EdgeInsets.fromLTRB(24, 0, 24, 24),
                             itemCount: filtered.length,
@@ -685,5 +800,18 @@ class _TalentMessagesScreenState extends State<TalentMessagesScreen> {
         ),
       ),
     );
+  }
+}
+
+class _TalentMessagesLifecycleObserver with WidgetsBindingObserver {
+  _TalentMessagesLifecycleObserver({required this.onResumed});
+
+  final VoidCallback onResumed;
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      onResumed();
+    }
   }
 }

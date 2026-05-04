@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 
 import '../../core/services/chat_service.dart';
+import '../../core/services/telephone_session_service.dart';
 
 const Color userCreamBackground = Color(0xFFF5F1E8);
 const Color userAmber = Color(0xFF9A654D);
@@ -230,13 +231,21 @@ class UserBottomNav extends StatefulWidget {
 
 class _UserBottomNavState extends State<UserBottomNav> {
   StreamSubscription<void>? _sessionSubscription;
+  Timer? _refreshTimer;
   int _notificationCount = 0;
 
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(_lifecycleObserver);
     _loadNotificationCount();
     _sessionSubscription = ChatService.realtime.sessionStream.listen((_) {
+      if (!mounted) {
+        return;
+      }
+      _loadNotificationCount(forceRefresh: true);
+    });
+    _refreshTimer = Timer.periodic(const Duration(seconds: 20), (_) {
       if (!mounted) {
         return;
       }
@@ -247,15 +256,28 @@ class _UserBottomNavState extends State<UserBottomNav> {
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(_lifecycleObserver);
     _sessionSubscription?.cancel();
+    _refreshTimer?.cancel();
     super.dispose();
   }
 
+  late final WidgetsBindingObserver _lifecycleObserver =
+      _UserBottomNavLifecycleObserver(onResumed: () {
+        if (!mounted) {
+          return;
+        }
+        _loadNotificationCount(forceRefresh: true);
+      });
+
   Future<void> _loadNotificationCount({bool forceRefresh = false}) async {
     try {
-      final sessions = await ChatService.getChatSessions(
-        forceRefresh: forceRefresh,
-      );
+      final results = await Future.wait<dynamic>([
+        ChatService.getChatSessions(forceRefresh: forceRefresh),
+        TelephoneSessionService.getSessions(forceRefresh: forceRefresh),
+      ]);
+      final sessions = results[0] as List<ChatSessionSummary>;
+      final telephoneSessions = results[1] as List<TelephoneSessionListItem>;
       if (!mounted) {
         return;
       }
@@ -271,8 +293,24 @@ class _UserBottomNavState extends State<UserBottomNav> {
             session.unreadCount == 0;
       }).length;
 
+      final telephonePending = telephoneSessions.where((session) {
+        final status = session.status.trim().toLowerCase();
+        final callStatus = session.callStatus.trim().toLowerCase();
+        final isExpired = session.validUntil != null &&
+            DateTime.now().isAfter(session.validUntil!);
+        final isCompleted = status == 'completed' ||
+            session.closedReason.trim().toLowerCase() ==
+                'manual_end_transaction';
+        if (isExpired || isCompleted) {
+          return false;
+        }
+        return status == 'pending' ||
+            callStatus == 'ringing' ||
+            callStatus == 'ongoing';
+      }).length;
+
       setState(() {
-        _notificationCount = unreadMessages + pendingRooms;
+        _notificationCount = unreadMessages + pendingRooms + telephonePending;
       });
     } catch (_) {
       if (!mounted) {
@@ -428,6 +466,19 @@ class _UserBottomNavState extends State<UserBottomNav> {
         ),
       ),
     );
+  }
+}
+
+class _UserBottomNavLifecycleObserver with WidgetsBindingObserver {
+  _UserBottomNavLifecycleObserver({required this.onResumed});
+
+  final VoidCallback onResumed;
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      onResumed();
+    }
   }
 }
 
